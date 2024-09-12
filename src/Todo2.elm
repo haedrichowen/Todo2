@@ -1,11 +1,6 @@
 module Todo2 exposing (..)
 
--- Press buttons to increment and decrement a counter.
---
--- Read how it works:
---   https://guide.elm-lang.org/architecture/buttons.html
---
-
+import Array exposing (Array)
 import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -33,7 +28,7 @@ main =
 
 type alias Todo =
     { content : String
-    , endTimeMillis : Int
+    , endTime : Int
     }
 
 
@@ -50,17 +45,22 @@ type alias Model =
     }
 
 
+initializeTime : Cmd Msg
+initializeTime =
+    Cmd.batch [ Task.perform GetNewTime Time.now, Task.perform GetTimeZone Time.here ]
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     let
         blankModel =
-            { newTodo = { content = "", endTimeMillis = 0 }
+            { newTodo = { content = "", endTime = 0 }
             , todoList = []
             , time = { now = Time.millisToPosix 0, zone = Time.utc }
             }
     in
     ( blankModel
-    , Cmd.batch [ getTimeZone, getNewTime ]
+    , Cmd.batch [ initializeTime ]
     )
 
 
@@ -70,7 +70,7 @@ init _ =
 
 type Msg
     = ChangeContent String
-    | ChangeEndTimeMillis Int Bool
+    | ChangeEndTime Int Bool
     | SubmitTodo
     | Finish Todo
     | GetNewTime Time.Posix
@@ -80,7 +80,7 @@ type Msg
 
 extractTodo : Todo -> String
 extractTodo todo =
-    todo.content ++ String.fromInt todo.endTimeMillis
+    todo.content ++ String.fromInt todo.endTime
 
 
 encodeTodos : List Todo -> Encoder.Value
@@ -92,16 +92,7 @@ todoDecoder : Decoder.Decoder Todo
 todoDecoder =
     Decoder.map2 Todo
         (Decoder.field "content" Decoder.string)
-        (Decoder.field "endTimeMillis" Decoder.int)
-
-
-defaultEndTimeMillis : Model -> Int
-defaultEndTimeMillis model =
-    if model.newTodo.endTimeMillis < Time.posixToMillis model.time.now then
-        Time.posixToMillis model.time.now
-
-    else
-        model.newTodo.endTimeMillis
+        (Decoder.field "endTime" Decoder.int)
 
 
 postEncodedTodoList : Encoder.Value -> Cmd Msg
@@ -127,16 +118,25 @@ todoDecoderResultsHandler result =
             todoList
 
 
+cleanNewTodo : ( Model, Todo ) -> Todo
+cleanNewTodo ( model, todo ) =
+    if todo.endTime == 0 then
+        { todo | endTime = getNextFreeTime model }
+
+    else
+        todo
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         ChangeContent newContent ->
-            ( { model | newTodo = { content = newContent, endTimeMillis = model.newTodo.endTimeMillis } }
+            ( { model | newTodo = { content = newContent, endTime = model.newTodo.endTime } }
             , Cmd.none
             )
 
-        ChangeEndTimeMillis newEndTime _ ->
-            ( { model | newTodo = { content = model.newTodo.content, endTimeMillis = newEndTime } }
+        ChangeEndTime newEndTime _ ->
+            ( { model | newTodo = { content = model.newTodo.content, endTime = newEndTime } }
             , Cmd.none
             )
 
@@ -144,8 +144,8 @@ update msg model =
             let
                 newModel =
                     { model
-                        | newTodo = { content = "", endTimeMillis = defaultEndTimeMillis model }
-                        , todoList = model.todoList ++ [ model.newTodo ]
+                        | newTodo = { content = "", endTime = 0 }
+                        , todoList = model.todoList ++ [ cleanNewTodo ( model, model.newTodo ) ]
                     }
             in
             ( newModel
@@ -162,8 +162,8 @@ update msg model =
             , Cmd.none
             )
 
-        GetTimeZone newTimeZone ->
-            ( { model | time = { now = model.time.now, zone = newTimeZone } }
+        GetTimeZone timeZone ->
+            ( { model | time = { now = model.time.now, zone = timeZone } }
             , Cmd.none
             )
 
@@ -182,16 +182,6 @@ update msg model =
 -- SUBSCRIPTIONS
 
 
-getNewTime : Cmd Msg
-getNewTime =
-    Task.perform GetNewTime Time.now
-
-
-getTimeZone : Cmd Msg
-getTimeZone =
-    Task.perform GetTimeZone Time.here
-
-
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     Time.every 1000 GetNewTime
@@ -201,8 +191,8 @@ subscriptions _ =
 -- VIEW
 
 
-timeNumberFormatter : Int -> String
-timeNumberFormatter input =
+timeLeadingZero : Int -> String
+timeLeadingZero input =
     if input < 10 then
         "0" ++ String.fromInt input
 
@@ -210,26 +200,33 @@ timeNumberFormatter input =
         String.fromInt input
 
 
-timeStringGenerator : TimeModel -> String
-timeStringGenerator model =
-    let
-        hour =
-            timeNumberFormatter (Time.toHour model.zone model.now)
+timeStringGenerator : (TimeModel, Time.Posix) -> String
+timeStringGenerator (timeModel, timePosix) =
+    if timeModel.now == timePosix then
+    "Now"
+    else
+        let
+            hour =
+                Time.toHour timeModel.zone timePosix
 
-        minute =
-            timeNumberFormatter (Time.toMinute model.zone model.now)
-    in
-    hour ++ ":" ++ minute
+            minute =
+                Time.toMinute timeModel.zone timePosix
+        in
+        if hour > 12 then
+            timeLeadingZero (hour - 12) ++ ":" ++ timeLeadingZero minute
+
+        else
+            timeLeadingZero hour ++ ":" ++ timeLeadingZero minute
 
 
 countdownStringGenerator : Int -> String
 countdownStringGenerator secondsRemaining =
     let
         minute =
-            String.fromInt (secondsRemaining // 60)
+            timeLeadingZero (secondsRemaining // 60)
 
         second =
-            String.fromInt (modBy 60 secondsRemaining)
+            timeLeadingZero (modBy 60 secondsRemaining)
     in
     minute ++ ":" ++ second
 
@@ -239,7 +236,7 @@ timeBlockLength =
     15 * 60 * 1000
 
 
-getSelectableTimes : ( Model, Int, List Int ) -> List Int
+getSelectableTimes : ( Model, Int, List ( Int, Bool ) ) -> List ( Int, Bool )
 getSelectableTimes ( model, count, selectableTimeList ) =
     let
         time =
@@ -248,40 +245,63 @@ getSelectableTimes ( model, count, selectableTimeList ) =
         roundedTimeMillis =
             (Time.posixToMillis time.now // timeBlockLength) * timeBlockLength
 
-        newEndTimeMillis =
+        newEndTime =
             roundedTimeMillis + count * 15 * 60 * 1000
+
+        selected =
+            if model.newTodo.endTime == newEndTime then
+                True
+
+            else
+                False
     in
     if count > 0 then
-        getSelectableTimes ( model, count - 1, newEndTimeMillis :: selectableTimeList )
+        getSelectableTimes ( model, count - 1, ( newEndTime, selected ) :: selectableTimeList )
 
     else
-        selectableTimeList
+        ( Time.posixToMillis time.now, True ) :: selectableTimeList
 
-timeSelectorGenerator : Model -> Html Msg
-timeSelectorGenerator model =
+
+getNextFreeTime : Model -> Int
+getNextFreeTime model =
+    let
+        selectableTimes =
+            List.map (\( time, selected ) -> time) (getSelectableTimes ( model, 9, [] ))
+
+        occupiedTimes =
+            List.map (\{ content, endTime } -> endTime) model.todoList
+    in
+    Maybe.withDefault (Time.posixToMillis model.time.now) (List.minimum selectableTimes)
+
+
+timeSelectorGenerator : ( Model, Int ) -> Html Msg
+timeSelectorGenerator ( model, count ) =
     let
         time =
             model.time
-        
-        selectableTimes =
-            getSelectableTimes ( model, 9, [] )
 
+        selectableTimes =
+            getSelectableTimes ( model, count, [] )
     in
-    span [] (List.map (\newEndTimeMillis -> span [] [ input [ name "TimeSelector", type_ "radio", onCheck (ChangeEndTimeMillis newEndTimeMillis) ] [], span [] [ text (timeStringGenerator { time | now = Time.millisToPosix newEndTimeMillis }) ] ]) selectableTimes)
+    let
+        selectableTimesHtml =
+            List.map (\( newEndTime, selected ) -> span [] [ input [ checked selected, name "TimeSelector", type_ "radio", onCheck (ChangeEndTime newEndTime) ] [], span [] [ text (timeStringGenerator (time, Time.millisToPosix newEndTime) ) ] ]) selectableTimes
+    in
+    span [] selectableTimesHtml
 
 
 todoGenerator : ( Todo, TimeModel ) -> Html Msg
 todoGenerator ( todo, time ) =
     let
         secondsRemaining =
-            (todo.endTimeMillis - Time.posixToMillis time.now) // 1000
+            (todo.endTime - Time.posixToMillis time.now) // 1000
     in
     li []
         [ table []
             [ tr []
                 [ td []
                     [ div [] [ text todo.content ]
-                    , div [] [ text (timeStringGenerator { time | now = Time.millisToPosix todo.endTimeMillis }) ]
+                    , div [] [ text (timeStringGenerator (time, Time.millisToPosix todo.endTime )) ]
                     ]
                 , td [] [ text (countdownStringGenerator secondsRemaining) ]
                 , td [] [ button [ onClick (Finish todo) ] [ text "done" ] ]
@@ -304,13 +324,13 @@ view model =
                 [ h1 [] [ text "Todo" ] ]
             , main_ []
                 [ div []
-                    [ input [ placeholder "What to do...", value model.newTodo.content, onInput ChangeContent ] []
+                    [ span [] [ text "What to do... " ]
+                    , input [ value model.newTodo.content, onInput ChangeContent ] []
                     , button [ onClick SubmitTodo ] [ text "+" ]
                     ]
-                , hr [] []
                 , div []
-                    [ span [] [ text "By when..." ]
-                    , span [] [ timeSelectorGenerator model ]
+                    [ span [] [ text "When... " ]
+                    , span [] [ timeSelectorGenerator ( model, 9 ) ]
                     ]
                 , hr [] []
                 ]
