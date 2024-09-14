@@ -42,6 +42,7 @@ type alias Model =
     { newTodo : Todo
     , todoList : List Todo
     , time : TimeModel
+    , timeSlotCount : Int
     }
 
 
@@ -57,6 +58,7 @@ init _ =
             { newTodo = { content = "", endTime = 0 }
             , todoList = []
             , time = { now = Time.millisToPosix 0, zone = Time.utc }
+            , timeSlotCount = 9
             }
     in
     ( blankModel
@@ -237,7 +239,7 @@ timeBlockLength =
 
 
 getSelectableTimes : ( Model, Int, List ( Int, Bool ) ) -> List ( Int, Bool )
-getSelectableTimes ( model, count, selectableTimeList ) =
+getSelectableTimes ( model, countRemaining, selectableTimeList ) =
     let
         time =
             model.time
@@ -246,7 +248,7 @@ getSelectableTimes ( model, count, selectableTimeList ) =
             (Time.posixToMillis time.now // timeBlockLength) * timeBlockLength
 
         newEndTime =
-            roundedTimeMillis + count * 15 * 60 * 1000
+            roundedTimeMillis + countRemaining * 15 * 60 * 1000
 
         selected =
             if model.newTodo.endTime == newEndTime then
@@ -255,8 +257,8 @@ getSelectableTimes ( model, count, selectableTimeList ) =
             else
                 False
     in
-    if count > 0 then
-        getSelectableTimes ( model, count - 1, ( newEndTime, selected ) :: selectableTimeList )
+    if countRemaining > 0 then
+        getSelectableTimes ( model, countRemaining - 1, ( newEndTime, selected ) :: selectableTimeList )
 
     else
         ( Time.posixToMillis time.now, True ) :: selectableTimeList
@@ -266,19 +268,23 @@ getNextFreeTime : Model -> Int
 getNextFreeTime model =
     let
         selectableTimes =
-            List.map (\( time, selected ) -> time) (getSelectableTimes ( model, 9, [] ))
+            List.map (\( time, selected ) -> time) (getSelectableTimes ( model, model.timeSlotCount, [] ))
 
         occupiedTimes =
             List.map (\{ content, endTime } -> endTime) model.todoList
+
+        availableTimes = List.filter (\time -> List.member time occupiedTimes) selectableTimes
     in
-    Maybe.withDefault (Time.posixToMillis model.time.now) (List.minimum selectableTimes)
+    Maybe.withDefault (Time.posixToMillis model.time.now) (List.minimum availableTimes)
 
 
-timeSelectorGenerator : ( Model, Int ) -> Html Msg
-timeSelectorGenerator ( model, count ) =
+timeSelectorGenerator : ( Model ) -> Html Msg
+timeSelectorGenerator ( model ) =
     let
         time =
             model.time
+
+        count = model.timeSlotCount
 
         selectableTimes =
             getSelectableTimes ( model, count, [] )
@@ -310,9 +316,9 @@ todoGenerator ( todo, time ) =
         ]
 
 
-todoListGenerator : ( List Todo, TimeModel ) -> Html Msg
-todoListGenerator ( todoList, time ) =
-    ol [] (List.map todoGenerator (List.map (\a -> ( a, time )) todoList))
+todoListGenerator : Model -> Html Msg
+todoListGenerator model =
+    ol [] (List.map todoGenerator (List.map (\a -> ( a, model.time )) model.todoList))
 
 
 view : Model -> Browser.Document Msg
@@ -330,12 +336,12 @@ view model =
                     ]
                 , div []
                     [ span [] [ text "When... " ]
-                    , span [] [ timeSelectorGenerator ( model, 9 ) ]
+                    , span [] [ timeSelectorGenerator model ]
                     ]
                 , hr [] []
                 ]
             , div []
-                [ div [] [ todoListGenerator ( model.todoList, model.time ) ]
+                [ div [] [ todoListGenerator model ]
                 ]
             ]
         ]
