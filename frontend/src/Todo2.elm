@@ -1,6 +1,5 @@
 module Todo2 exposing (..)
 
-import Array exposing (Array)
 import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -11,6 +10,8 @@ import Json.Encode as Encoder
 import List
 import Task
 import Time
+import String exposing (fromInt)
+import Platform.Cmd as Cmd
 
 
 
@@ -31,16 +32,26 @@ type alias Todo =
     , endTime : Int
     }
 
+type alias Note =
+    { 
+        content : String
+    ,   position : MousePosition
+    }
+
+type alias MousePosition =
+    {   x : Int
+    , y : Int
+    }
 
 type alias TimeModel =
     { zone : Time.Zone
     , now : Time.Posix
     }
 
-
 type alias Model =
     { newTodo : Todo
     , todoList : List Todo
+    , noteList : List Note
     , time : TimeModel
     , timeSlotCount : Int
     }
@@ -57,12 +68,13 @@ init _ =
         blankModel =
             { newTodo = { content = "", endTime = 0 }
             , todoList = []
+            , noteList = []
             , time = { now = Time.millisToPosix 0, zone = Time.utc }
             , timeSlotCount = 9
             }
     in
     ( blankModel
-    , Cmd.batch [ initializeTime ]
+    , Cmd.batch [ initializeTime, getTodoList ]
     )
 
 
@@ -75,20 +87,22 @@ type Msg
     | ChangeEndTime Int Bool
     | SubmitTodo
     | Finish Todo
+    | SpawnNote MousePosition
     | GetNewTime Time.Posix
     | GetTimeZone Time.Zone
     | SyncServer (Result Http.Error Decoder.Value)
 
 
-extractTodo : Todo -> String
-extractTodo todo =
-    todo.content ++ String.fromInt todo.endTime
+encodeTodoList : List Todo -> Encoder.Value
+encodeTodoList todoList =
+    Encoder.list todoEncoder todoList
 
-
-encodeTodos : List Todo -> Encoder.Value
-encodeTodos todoList =
-    Encoder.list Encoder.string (List.map extractTodo todoList)
-
+todoEncoder : Todo -> Encoder.Value
+todoEncoder todo = 
+    Encoder.object
+        [ ( "content", Encoder.string todo.content )
+        , ( "endTime", Encoder.int todo.endTime )
+        ]
 
 todoDecoder : Decoder.Decoder Todo
 todoDecoder =
@@ -96,16 +110,29 @@ todoDecoder =
         (Decoder.field "content" Decoder.string)
         (Decoder.field "endTime" Decoder.int)
 
+mousePositionDecoder : Decoder.Decoder MousePosition
+mousePositionDecoder =
+        Decoder.map2 MousePosition
+            (Decoder.field "pageX" Decoder.int)
+            (Decoder.field "pageY" Decoder.int)
 
-postEncodedTodoList : Encoder.Value -> Cmd Msg
-postEncodedTodoList encodedTodoList =
-    let
-        todoListJson =
-            Http.jsonBody encodedTodoList
-    in
+decodeMousePosition : Decoder.Value -> MousePosition
+decodeMousePosition encodedPosition =
+    mousePositionDecoderResultsHandler (Decoder.decodeValue mousePositionDecoder encodedPosition)
+        
+
+postTodoList : List Todo -> Cmd Msg
+postTodoList todoList =
     Http.post
-        { url = "localhost:7999"
-        , body = todoListJson
+        { url = "http://localhost:7999/sync"
+        , body = Http.jsonBody (encodeTodoList todoList)
+        , expect = Http.expectJson SyncServer Decoder.value
+        }
+
+getTodoList : Cmd Msg
+getTodoList =
+    Http.get
+        { url = "http://localhost:7999/sync"
         , expect = Http.expectJson SyncServer Decoder.value
         }
 
@@ -113,12 +140,41 @@ postEncodedTodoList encodedTodoList =
 todoDecoderResultsHandler : Result Decoder.Error (List Todo) -> List Todo
 todoDecoderResultsHandler result =
     case result of
-        Err _ ->
+        Err error ->
+            let
+                _ =
+                    Debug.log "Error is " error
+            in
             []
 
         Ok todoList ->
             todoList
 
+noteDecoderResultsHandler : Result Decoder.Error (List Note) -> List Note
+noteDecoderResultsHandler result =
+    case result of
+        Err error ->
+            let
+                _ =
+                    Debug.log "Error is " error
+            in
+            []
+
+        Ok noteList ->
+            noteList
+
+mousePositionDecoderResultsHandler : Result Decoder.Error MousePosition -> MousePosition
+mousePositionDecoderResultsHandler result =
+    case result of
+        Err error ->
+            let
+                _ =
+                    Debug.log "Error is " error
+            in
+            {x=0,y=0}
+
+        Ok position ->
+            position
 
 cleanNewTodo : ( Model, Todo ) -> Todo
 cleanNewTodo ( model, todo ) =
@@ -143,21 +199,23 @@ update msg model =
             )
 
         SubmitTodo ->
-            let
-                newModel =
-                    { model
-                        | newTodo = { content = "", endTime = 0 }
-                        , todoList = model.todoList ++ [ cleanNewTodo ( model, model.newTodo ) ]
-                    }
+            let newModel =  { model | newTodo = { content = "", endTime = 0 }, todoList = model.todoList ++ [ cleanNewTodo ( model, model.newTodo ) ] }
             in
             ( newModel
-            , postEncodedTodoList (encodeTodos newModel.todoList)
+            , postTodoList newModel.todoList
             )
 
         Finish todo ->
-            ( { model | todoList = List.filter (\x -> x /= todo) model.todoList }
-            , Cmd.none
+            let newTodoList = List.filter (\x -> x /= todo) model.todoList
+            in
+            ( { model | todoList = newTodoList }
+            , postTodoList newTodoList
             )
+
+        SpawnNote position -> 
+            let newNote = {content =  "", position = Debug.log "Click Position: " position}
+            in
+            ({model | noteList = newNote :: model.noteList}, Cmd.none)
 
         GetNewTime newTime ->
             ( { model | time = { now = newTime, zone = model.time.zone } }
@@ -190,6 +248,7 @@ subscriptions _ =
 
 
 
+
 -- VIEW
 
 
@@ -202,10 +261,11 @@ timeLeadingZero input =
         String.fromInt input
 
 
-timeStringGenerator : (TimeModel, Time.Posix) -> String
-timeStringGenerator (timeModel, timePosix) =
+timeStringGenerator : ( TimeModel, Time.Posix ) -> String
+timeStringGenerator ( timeModel, timePosix ) =
     if timeModel.now == timePosix then
-    "Now"
+        "Now"
+
     else
         let
             hour =
@@ -273,25 +333,27 @@ getNextFreeTime model =
         occupiedTimes =
             List.map (\{ content, endTime } -> endTime) model.todoList
 
-        availableTimes = List.filter (\time -> List.member time occupiedTimes) selectableTimes
+        availableTimes =
+            List.filter (\time -> List.member time occupiedTimes) selectableTimes
     in
     Maybe.withDefault (Time.posixToMillis model.time.now) (List.minimum availableTimes)
 
 
-timeSelectorGenerator : ( Model ) -> Html Msg
-timeSelectorGenerator ( model ) =
+timeSelectorGenerator : Model -> Html Msg
+timeSelectorGenerator model =
     let
         time =
             model.time
 
-        count = model.timeSlotCount
+        count =
+            model.timeSlotCount
 
         selectableTimes =
             getSelectableTimes ( model, count, [] )
     in
     let
         selectableTimesHtml =
-            List.map (\( newEndTime, selected ) -> span [] [ input [ checked selected, name "TimeSelector", type_ "radio", onCheck (ChangeEndTime newEndTime) ] [], span [] [ text (timeStringGenerator (time, Time.millisToPosix newEndTime) ) ] ]) selectableTimes
+            List.map (\( newEndTime, selected ) -> span [] [ input [ checked selected, name "TimeSelector", type_ "radio", onCheck (ChangeEndTime newEndTime) ] [], span [] [ text (timeStringGenerator ( time, Time.millisToPosix newEndTime )) ] ]) selectableTimes
     in
     span [] selectableTimesHtml
 
@@ -307,7 +369,7 @@ todoGenerator ( todo, time ) =
             [ tr []
                 [ td []
                     [ div [] [ text todo.content ]
-                    , div [] [ text (timeStringGenerator (time, Time.millisToPosix todo.endTime )) ]
+                    , div [] [ text (timeStringGenerator ( time, Time.millisToPosix todo.endTime )) ]
                     ]
                 , td [] [ text (countdownStringGenerator secondsRemaining) ]
                 , td [] [ button [ onClick (Finish todo) ] [ text "done" ] ]
@@ -320,29 +382,49 @@ todoListGenerator : Model -> Html Msg
 todoListGenerator model =
     ol [] (List.map todoGenerator (List.map (\a -> ( a, model.time )) model.todoList))
 
+noteGenerator : Note -> Html Msg
+noteGenerator note =
+    let 
+        x = fromInt note.position.x ++ "px"
+        y = fromInt note.position.y ++ "px"
+    in
+    div [ style "position" "fixed"
+        , style "left" x
+        , style "top" y
+        ] [ textarea [] [] ]
+
+noteListGenerator : Model -> Html Msg
+noteListGenerator model = 
+    div [] (List.map noteGenerator model.noteList)
 
 view : Model -> Browser.Document Msg
 view model =
+    let whiteboard = span [on "click" (Decoder.map SpawnNote mousePositionDecoder), class "Whiteboard", style "min-width" "17%"] []
+    in
     { title = "Todo2"
     , body =
-        [ article []
-            [ header []
-                [ h1 [] [ text "Todo" ] ]
-            , main_ []
-                [ div []
-                    [ span [] [ text "What to do... " ]
-                    , input [ value model.newTodo.content, onInput ChangeContent ] []
-                    , button [ onClick SubmitTodo ] [ text "+" ]
+        [ div [ style "display" "flex", style "flex-direction" "row", style "justify-content" "center" ] 
+            [ whiteboard
+             ,   article [ class "TodoList" ]
+                    [ header []
+                        [ h1 [] [ text "Todo" ] ]
+                    , main_ []
+                        [ div []
+                            [ span [] [ text "What to do... " ]
+                            , input [ value model.newTodo.content, onInput ChangeContent ] []
+                            , button [ onClick SubmitTodo ] [ text "+" ]
+                            ]
+                        , div []
+                            [ span [] [ text "When... " ]
+                            , span [] [ timeSelectorGenerator model ]
+                            ]
+                        , hr [] []
+                        ]
+                    , div []
+                        [ div [] [ todoListGenerator model ]
+                        ]
                     ]
-                , div []
-                    [ span [] [ text "When... " ]
-                    , span [] [ timeSelectorGenerator model ]
-                    ]
-                , hr [] []
-                ]
-            , div []
-                [ div [] [ todoListGenerator model ]
-                ]
-            ]
+                , whiteboard
+            , noteListGenerator model ]
         ]
     }

@@ -2,7 +2,7 @@
     "type": "application",
     "source-directories": [
         "src",
-        "../../../../../../../../../../../usr/local/lib/node_modules/elm-test/elm/src",
+        "../../../../../../../../../../../../usr/local/lib/node_modules/elm-test/elm/src",
         "../../../../../src"
     ],
     "elm-version": "0.19.1",
