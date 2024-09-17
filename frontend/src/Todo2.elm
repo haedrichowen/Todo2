@@ -29,7 +29,8 @@ main =
 
 type alias Todo =
     { content : String
-    , endTime : Int
+    , startTime : Int
+    , length : Int
     }
 
 type alias Note =
@@ -54,8 +55,11 @@ type alias Model =
     , noteList : List Note
     , time : TimeModel
     , timeSlotCount : Int
+    , timeSlotLength : Int
     }
 
+defaultTimeSlotLength : Int 
+defaultTimeSlotLength = 15 * 60 * 1000
 
 initializeTime : Cmd Msg
 initializeTime =
@@ -66,11 +70,12 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         blankModel =
-            { newTodo = { content = "", endTime = 0 }
+            { newTodo = { content = "", startTime = 0, length = defaultTimeSlotLength }
             , todoList = []
             , noteList = []
             , time = { now = Time.millisToPosix 0, zone = Time.utc }
             , timeSlotCount = 9
+            , timeSlotLength = defaultTimeSlotLength
             }
     in
     ( blankModel
@@ -101,14 +106,16 @@ todoEncoder : Todo -> Encoder.Value
 todoEncoder todo = 
     Encoder.object
         [ ( "content", Encoder.string todo.content )
-        , ( "endTime", Encoder.int todo.endTime )
+        , ( "startTime", Encoder.int todo.startTime )
+        , ( "startTime", Encoder.int todo.length )
         ]
 
 todoDecoder : Decoder.Decoder Todo
 todoDecoder =
-    Decoder.map2 Todo
+    Decoder.map3 Todo
         (Decoder.field "content" Decoder.string)
-        (Decoder.field "endTime" Decoder.int)
+        (Decoder.field "startTime" Decoder.int)
+        (Decoder.field "length" Decoder.int)
 
 mousePositionDecoder : Decoder.Decoder MousePosition
 mousePositionDecoder =
@@ -178,8 +185,8 @@ mousePositionDecoderResultsHandler result =
 
 cleanNewTodo : ( Model, Todo ) -> Todo
 cleanNewTodo ( model, todo ) =
-    if todo.endTime == 0 then
-        { todo | endTime = getNextFreeTime model }
+    if todo.startTime == 0 then
+        { todo | startTime = getNextFreeTime model }
 
     else
         todo
@@ -189,17 +196,17 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         ChangeContent newContent ->
-            ( { model | newTodo = { content = newContent, endTime = model.newTodo.endTime } }
+            ( { model | newTodo = { content = newContent, startTime = model.newTodo.startTime, length = model.timeSlotLength } }
             , Cmd.none
             )
 
-        ChangeEndTime newEndTime _ ->
-            ( { model | newTodo = { content = model.newTodo.content, endTime = newEndTime } }
+        ChangeEndTime selectedTime _ ->
+            ( { model | newTodo = { content = model.newTodo.content, startTime = selectedTime, length = model.timeSlotLength } }
             , Cmd.none
             )
 
         SubmitTodo ->
-            let newModel =  { model | newTodo = { content = "", endTime = 0 }, todoList = model.todoList ++ [ cleanNewTodo ( model, model.newTodo ) ] }
+            let newModel =  { model | newTodo = { content = "", startTime = 0, length = model.timeSlotLength }, todoList = model.todoList ++ [ cleanNewTodo ( model, model.newTodo ) ] }
             in
             ( newModel
             , postTodoList newModel.todoList
@@ -292,36 +299,34 @@ countdownStringGenerator secondsRemaining =
     in
     minute ++ ":" ++ second
 
-
-timeBlockLength : Int
-timeBlockLength =
-    15 * 60 * 1000
-
-
 getSelectableTimes : ( Model, Int, List ( Int, Bool ) ) -> List ( Int, Bool )
-getSelectableTimes ( model, countRemaining, selectableTimeList ) =
+getSelectableTimes ( model, countRemaining, targetTimeList ) =
     let
         time =
             model.time
 
         roundedTimeMillis =
-            (Time.posixToMillis time.now // timeBlockLength) * timeBlockLength
+            (Time.posixToMillis time.now // model.timeSlotLength) * model.timeSlotLength
 
-        newEndTime =
-            roundedTimeMillis + countRemaining * 15 * 60 * 1000
+        newSelectableTime =
+            roundedTimeMillis + countRemaining * model.timeSlotLength
+
+        occupiedTimes =
+            List.map (\{ content, startTime, length } -> startTime) model.todoList
 
         selected =
-            if model.newTodo.endTime == newEndTime then
+            if model.newTodo.startTime == newSelectableTime then
                 True
 
             else
                 False
     in
-    if countRemaining > 0 then
-        getSelectableTimes ( model, countRemaining - 1, ( newEndTime, selected ) :: selectableTimeList )
+    if countRemaining > 0 && not (List.member newSelectableTime occupiedTimes) then
+        getSelectableTimes ( model, countRemaining - 1, ( newSelectableTime, selected ) :: targetTimeList )
 
     else
-        ( Time.posixToMillis time.now, True ) :: selectableTimeList
+        ( Time.posixToMillis time.now, True ) :: targetTimeList
+
 
 
 getNextFreeTime : Model -> Int
@@ -329,14 +334,8 @@ getNextFreeTime model =
     let
         selectableTimes =
             List.map (\( time, selected ) -> time) (getSelectableTimes ( model, model.timeSlotCount, [] ))
-
-        occupiedTimes =
-            List.map (\{ content, endTime } -> endTime) model.todoList
-
-        availableTimes =
-            List.filter (\time -> List.member time occupiedTimes) selectableTimes
     in
-    Maybe.withDefault (Time.posixToMillis model.time.now) (List.minimum availableTimes)
+    Maybe.withDefault (Time.posixToMillis model.time.now) (List.minimum selectableTimes)
 
 
 timeSelectorGenerator : Model -> Html Msg
@@ -355,21 +354,22 @@ timeSelectorGenerator model =
         selectableTimesHtml =
             List.map (\( newEndTime, selected ) -> span [] [ input [ checked selected, name "TimeSelector", type_ "radio", onCheck (ChangeEndTime newEndTime) ] [], span [] [ text (timeStringGenerator ( time, Time.millisToPosix newEndTime )) ] ]) selectableTimes
     in
-    span [] selectableTimesHtml
+    span [ style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableTimesHtml
 
 
 todoGenerator : ( Todo, TimeModel ) -> Html Msg
 todoGenerator ( todo, time ) =
     let
+        todoEndTime = todo.startTime + todo.length
         secondsRemaining =
-            (todo.endTime - Time.posixToMillis time.now) // 1000
+            (todoEndTime - Time.posixToMillis time.now) // 1000
     in
     li []
         [ table []
             [ tr []
                 [ td []
                     [ div [] [ text todo.content ]
-                    , div [] [ text (timeStringGenerator ( time, Time.millisToPosix todo.endTime )) ]
+                    , div [] [ text (timeStringGenerator ( time, Time.millisToPosix todoEndTime )) ]
                     ]
                 , td [] [ text (countdownStringGenerator secondsRemaining) ]
                 , td [] [ button [ onClick (Finish todo) ] [ text "done" ] ]
@@ -395,17 +395,17 @@ noteGenerator note =
 
 noteListGenerator : Model -> Html Msg
 noteListGenerator model = 
-    div [] (List.map noteGenerator model.noteList)
+    div [style "z-index" "5", style "position" "fixed"] (List.map noteGenerator model.noteList)
 
 view : Model -> Browser.Document Msg
 view model =
-    let whiteboard = span [on "click" (Decoder.map SpawnNote mousePositionDecoder), class "Whiteboard", style "min-width" "17%"] []
+    let whiteboard = span [on "click" (Decoder.map SpawnNote mousePositionDecoder), class "Whiteboard", style "position" "fixed", style "top" "0", style "width" "100vw", style "height" "100vh", style "z-index" "1"  ] []
     in
     { title = "Todo2"
     , body =
-        [ div [ style "display" "flex", style "flex-direction" "row", style "justify-content" "center" ] 
-            [ whiteboard
-             ,   article [ class "TodoList" ]
+        [   div [ style "display" "flex", style "justify-content" "center", style "width" "100vw", style "height" "100vh" ] 
+            [   whiteboard
+            ,   article [ class "TodoList", style "z-index" "3", style "position" "fixed" ]
                     [ header []
                         [ h1 [] [ text "Todo" ] ]
                     , main_ []
@@ -415,16 +415,13 @@ view model =
                             , button [ onClick SubmitTodo ] [ text "+" ]
                             ]
                         , div []
-                            [ span [] [ text "When... " ]
-                            , span [] [ timeSelectorGenerator model ]
+                            [ span [] [ span [] [ text "When... " ], span [style "display" "inline-block", style "width" "70%"] [timeSelectorGenerator model] ]
                             ]
                         , hr [] []
                         ]
                     , div []
-                        [ div [] [ todoListGenerator model ]
-                        ]
+                        [ todoListGenerator model ]
                     ]
-                , whiteboard
             , noteListGenerator model ]
         ]
     }

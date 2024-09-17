@@ -11,14 +11,15 @@ import (
 )
 
 type todo struct {
-	Content string `json:"content"`
-	EndTime int    `json:"endTime"`
+	Content   string `json:"content"`
+	StartTime int    `json:"startTime"`
+	Length    int    `json:"length"`
 }
 
 var todoList = []todo{}
 
 func generateDefaultTodoList() []todo {
-	return []todo{{Content: "Make a Todo!", EndTime: int(time.Now().UnixMilli())}}
+	return []todo{{Content: "Make a Todo!", StartTime: int(time.Now().UnixMilli()), Length: 15 * 60 * 1000}}
 }
 
 type apiError struct {
