@@ -296,9 +296,8 @@ timeLeadingZero input =
 
 timeStringGenerator : TimeModel -> Time.Posix -> String
 timeStringGenerator timeModel timePosix =
-    if timeModel.now == timePosix then
+    if Time.posixToMillis timeModel.now > Time.posixToMillis timePosix then
         "Now"
-
     else
         let
             hour =
@@ -347,11 +346,13 @@ getSelectableTimes model countRemaining targetTimeList =
         selected =
             model.newTodo.startTime == newSelectableTime
     in
-    if countRemaining > 0 && not (List.member newSelectableTime occupiedTimes) then
-        getSelectableTimes model (countRemaining - 1) (( newSelectableTime, selected ) :: targetTimeList)
-
+    if countRemaining >= 0 then
+        if List.member newSelectableTime occupiedTimes then
+            getSelectableTimes model (countRemaining - 1) targetTimeList
+        else
+            getSelectableTimes model (countRemaining - 1) (( newSelectableTime, selected ) :: targetTimeList)
     else
-        ( Time.posixToMillis time.now, True ) :: targetTimeList
+        targetTimeList
 
 
 getNextFreeTime : Model -> Int

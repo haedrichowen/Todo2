@@ -17,9 +17,15 @@ type todo struct {
 }
 
 var todoList = []todo{}
+var todoDefaultLength = 15 * 60 * 1000
+
+func roundedTime(time int64) int {
+	rounded := (int(time) / todoDefaultLength) * todoDefaultLength
+	return rounded
+}
 
 func generateDefaultTodoList() []todo {
-	return []todo{{Content: "Make a Todo!", StartTime: int(time.Now().UnixMilli()), Length: 15 * 60 * 1000}}
+	return []todo{{Content: "Make a Todo!", StartTime: roundedTime(time.Now().UnixMilli()), Length: todoDefaultLength}}
 }
 
 type apiError struct {
