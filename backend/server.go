@@ -16,8 +16,15 @@ type todo struct {
 	Length    int    `json:"length"`
 }
 
+type note struct {
+	Content  string `json:"content"`
+	Position [2]int `json:"position"`
+}
+
 var todoList = []todo{}
 var todoDefaultLength = 15 * 60 * 1000
+
+var notesList = []note{}
 
 func roundedTime(time int64) int {
 	rounded := (int(time) / todoDefaultLength) * todoDefaultLength
@@ -45,6 +52,7 @@ func httpHandler(f apiErrorHandlerFunc) http.HandlerFunc {
 
 func init() {
 	initializeTodoList()
+	initlializeNotesList()
 }
 
 func initializeTodoList() {
@@ -56,7 +64,7 @@ func initializeTodoList() {
 		}
 		writeErr := os.WriteFile("todoList.json", encodedDefaultTodoList, fs.ModePerm)
 		if writeErr != nil {
-			log.Fatal("Error when writing stored todo list", writeErr)
+			log.Fatal("Error when writing default todo list", writeErr)
 		}
 		todoList = generateDefaultTodoList()
 		return
@@ -67,8 +75,26 @@ func initializeTodoList() {
 	}
 }
 
+func initlializeNotesList() {
+	storedNotesList, readErr := os.ReadFile("notesList.json")
+	if readErr != nil {
+		encodedDefaultNotesList := []byte("{}")
+		writeErr := os.WriteFile("notesList.json", encodedDefaultNotesList, fs.ModePerm)
+		if writeErr != nil {
+			log.Fatal("Error when writing default notes list", writeErr)
+		}
+		todoList = generateDefaultTodoList()
+		return
+	}
+	unmarshalErr := json.Unmarshal(storedNotesList, &notesList)
+	if unmarshalErr != nil {
+		log.Fatal("Error when unmarshalling stored notes list: ", unmarshalErr)
+	}
+}
+
 func main() {
-	http.HandleFunc("/sync", httpHandler(syncTodos))
+	http.HandleFunc("/sync/todo", httpHandler(syncTodos))
+	http.HandleFunc("/sync/notes", httpHandler(syncNotes))
 	http.ListenAndServe(":7999", nil)
 }
 
@@ -92,6 +118,36 @@ func syncTodos(w http.ResponseWriter, r *http.Request) error {
 			log.Fatal("Error when unmarshalling response body: ", unmarshalErr)
 		}
 		todoList = postedTodoList
+		os.WriteFile("todoList.json", requestBody, fs.ModePerm)
+		return nil
+	case http.MethodGet:
+		return writeJSON(w, http.StatusOK, todoList)
+
+	default:
+		return writeJSON(w, http.StatusMethodNotAllowed, apiError{Err: "Invalid Method", Status: http.StatusMethodNotAllowed})
+	}
+}
+
+func syncNotes(w http.ResponseWriter, r *http.Request) error {
+	if len(notesList) == 0 {
+		todoList = generateDefaultTodoList()
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8000")
+	switch r.Method {
+	case http.MethodOptions:
+		w.Header().Set("Access-Control-Allow-Headers", "content-type")
+		return nil
+	case http.MethodPost:
+		requestBody, requestBodyErr := io.ReadAll(r.Body)
+		if requestBodyErr != nil {
+			log.Fatal("Error when reading response body: ", requestBodyErr)
+		}
+		var postedNotesList []note
+		var unmarshalErr = json.Unmarshal(requestBody, &postedNotesList)
+		if unmarshalErr != nil {
+			log.Fatal("Error when unmarshalling response body: ", unmarshalErr)
+		}
+		notesList = postedNotesList
 		os.WriteFile("todoList.json", requestBody, fs.ModePerm)
 		return nil
 	case http.MethodGet:
