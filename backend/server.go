@@ -78,7 +78,7 @@ func initializeTodoList() {
 func initlializeNotesList() {
 	storedNotesList, readErr := os.ReadFile("notesList.json")
 	if readErr != nil {
-		encodedDefaultNotesList := []byte("{}")
+		encodedDefaultNotesList := []byte("{[]}")
 		writeErr := os.WriteFile("notesList.json", encodedDefaultNotesList, fs.ModePerm)
 		if writeErr != nil {
 			log.Fatal("Error when writing default notes list", writeErr)
