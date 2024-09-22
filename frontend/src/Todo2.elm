@@ -13,8 +13,6 @@ import Platform.Cmd as Cmd
 import String exposing (fromInt)
 import Task
 import Time
-import Http exposing (request)
-
 
 
 -- MAIN
@@ -87,7 +85,7 @@ init _ =
             }
     in
     ( blankModel
-    , Cmd.batch [ initializeTime, getTodoList ]
+    , Cmd.batch [ initializeTime, getTodoList, getNoteList ]
     )
 
 
@@ -104,12 +102,17 @@ type Msg
     | SpawnNote MousePosition
     | GetNewTime Time.Posix
     | GetTimeZone Time.Zone
-    | SyncServer (Result Http.Error Decoder.Value)
+    | SyncTodos (Result Http.Error Decoder.Value)
+    | SyncNotes (Result Http.Error Decoder.Value)
 
 
 encodeTodoList : List Todo -> Encoder.Value
 encodeTodoList todoList =
     Encoder.list todoEncoder todoList
+
+encodeNoteList : List Note -> Encoder.Value
+encodeNoteList noteList = 
+    Encoder.list noteEncoder noteList
 
 
 todoEncoder : Todo -> Encoder.Value
@@ -120,6 +123,18 @@ todoEncoder todo =
         , ( "length", Encoder.int todo.length )
         ]
 
+noteEncoder : Note -> Encoder.Value
+noteEncoder note = 
+        let 
+            encodedPosition = Encoder.object 
+                [ ("X", Encoder.int note.position.x)
+                , ("Y", Encoder.int note.position.y)
+                ]
+        in
+        Encoder.object
+            [ ("content", Encoder.string note.content) 
+            , ("position", encodedPosition)
+            ]
 
 todoDecoder : Decoder.Decoder Todo
 todoDecoder =
@@ -128,12 +143,23 @@ todoDecoder =
         (Decoder.field "startTime" Decoder.int)
         (Decoder.field "length" Decoder.int)
 
+noteDecoder : Decoder.Decoder Note
+noteDecoder =
+    Decoder.map2 Note
+        (Decoder.field "content" Decoder.string)
+        (Decoder.field "position" 
+            (Decoder.map2 MousePosition 
+                (Decoder.field "X" Decoder.int)
+                (Decoder.field "Y" Decoder.int)
+            )
+        )
+
 
 mousePositionDecoder : Decoder.Decoder MousePosition
 mousePositionDecoder =
     Decoder.map2 MousePosition
-        (Decoder.field "pageX" Decoder.int)
-        (Decoder.field "pageY" Decoder.int)
+        (Decoder.field "x" Decoder.int)
+        (Decoder.field "y" Decoder.int)
 
 
 decodeMousePosition : Decoder.Value -> MousePosition
@@ -146,7 +172,7 @@ postTodoList todoList =
     Http.post
         { url = "http://localhost:7999/sync/todo"
         , body = Http.jsonBody (encodeTodoList todoList)
-        , expect = Http.expectJson SyncServer Decoder.value
+        , expect = Http.expectJson SyncTodos Decoder.value
         }
 
 
@@ -154,9 +180,24 @@ getTodoList : Cmd Msg
 getTodoList =
     Http.get
         { url = "http://localhost:7999/sync/todo"
-        , expect = Http.expectJson SyncServer Decoder.value
+        , expect = Http.expectJson SyncTodos Decoder.value
         }
 
+postNoteList : List Note -> Cmd Msg
+postNoteList noteList =
+    Http.post
+        { url = "http://localhost:7999/sync/notes"
+        , body = Http.jsonBody (encodeNoteList noteList)
+        , expect = Http.expectJson SyncNotes Decoder.value
+        }
+
+
+getNoteList : Cmd Msg
+getNoteList =
+    Http.get
+        { url = "http://localhost:7999/sync/notes"
+        , expect = Http.expectJson SyncNotes Decoder.value
+        }
 
 todoDecoderResultsHandler : Result Decoder.Error (List Todo) -> List Todo
 todoDecoderResultsHandler result =
@@ -164,21 +205,19 @@ todoDecoderResultsHandler result =
         Err error ->
             let
                 _ =
-                    Debug.log "Error is " error
+                    Debug.log "Todo error is " error
             in
             []
 
         Ok todoList ->
             todoList
-
-
 noteDecoderResultsHandler : Result Decoder.Error (List Note) -> List Note
 noteDecoderResultsHandler result =
     case result of
         Err error ->
             let
                 _ =
-                    Debug.log "Error is " error
+                    Debug.log "Notes error is " error
             in
             []
 
@@ -251,8 +290,9 @@ update msg model =
             let
                 newNote =
                     { content = "", position = Debug.log "Click Position: " position }
-            in
-            ( { model | noteList = newNote :: model.noteList }, Cmd.none )
+                newModel = { model | noteList = newNote :: model.noteList }
+            in 
+            ( newModel, postNoteList newModel.noteList )
 
         GetNewTime newTime ->
             let
@@ -271,10 +311,20 @@ update msg model =
             , Cmd.none
             )
 
-        SyncServer result ->
+        SyncTodos result ->
             case result of
                 Ok todoListJson ->
                     ( { model | todoList = List.sortBy .startTime (todoDecoderResultsHandler (Decoder.decodeValue (Decoder.list todoDecoder) todoListJson)) }
+                    , Cmd.none
+                    )
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+        SyncNotes result ->
+            case result of
+                Ok noteListJson ->
+                    ( { model | noteList = noteDecoderResultsHandler (Decoder.decodeValue (Decoder.list noteDecoder) noteListJson) }
                     , Cmd.none
                     )
 

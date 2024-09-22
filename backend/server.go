@@ -16,9 +16,14 @@ type todo struct {
 	Length    int    `json:"length"`
 }
 
+type position struct {
+	X int
+	Y int
+}
+
 type note struct {
-	Content  string `json:"content"`
-	Position [2]int `json:"position"`
+	Content  string   `json:"content"`
+	Position position `json:"position"`
 }
 
 var todoList = []todo{}
@@ -78,12 +83,11 @@ func initializeTodoList() {
 func initlializeNotesList() {
 	storedNotesList, readErr := os.ReadFile("notesList.json")
 	if readErr != nil {
-		encodedDefaultNotesList := []byte("{[]}")
+		encodedDefaultNotesList := []byte("[]")
 		writeErr := os.WriteFile("notesList.json", encodedDefaultNotesList, fs.ModePerm)
 		if writeErr != nil {
 			log.Fatal("Error when writing default notes list", writeErr)
 		}
-		todoList = generateDefaultTodoList()
 		return
 	}
 	unmarshalErr := json.Unmarshal(storedNotesList, &notesList)
@@ -129,9 +133,6 @@ func syncTodos(w http.ResponseWriter, r *http.Request) error {
 }
 
 func syncNotes(w http.ResponseWriter, r *http.Request) error {
-	if len(notesList) == 0 {
-		todoList = generateDefaultTodoList()
-	}
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8000")
 	switch r.Method {
 	case http.MethodOptions:
@@ -148,10 +149,10 @@ func syncNotes(w http.ResponseWriter, r *http.Request) error {
 			log.Fatal("Error when unmarshalling response body: ", unmarshalErr)
 		}
 		notesList = postedNotesList
-		os.WriteFile("todoList.json", requestBody, fs.ModePerm)
+		os.WriteFile("notesList.json", requestBody, fs.ModePerm)
 		return nil
 	case http.MethodGet:
-		return writeJSON(w, http.StatusOK, todoList)
+		return writeJSON(w, http.StatusOK, notesList)
 
 	default:
 		return writeJSON(w, http.StatusMethodNotAllowed, apiError{Err: "Invalid Method", Status: http.StatusMethodNotAllowed})
