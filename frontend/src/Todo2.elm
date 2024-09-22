@@ -97,9 +97,10 @@ type Msg
     = NewTodoContent String
     | NewTodoEndTime Int
     | SubmitNewTodo Todo
-    | FinishTodo Todo
+    | RemoveTodo Todo
     | UpdateTodoList (List Todo)
     | SpawnNote MousePosition
+    | RemoveNote Note
     | GetNewTime Time.Posix
     | GetTimeZone Time.Zone
     | SyncTodos (Result Http.Error Decoder.Value)
@@ -268,7 +269,7 @@ update msg model =
             in
             (newModel, postTodoList newModel.todoList)
 
-        FinishTodo todo ->
+        RemoveTodo todo ->
             let
                 newTodoList =
                     List.filter (\x -> x /= todo) model.todoList
@@ -286,6 +287,12 @@ update msg model =
             
             , postTodoList newTodoList )
 
+        RemoveNote note ->
+            let
+                newModel = { model | noteList = List.filter (\testNote -> testNote /= note) model.noteList }
+            in
+            (newModel, postNoteList newModel.noteList)
+
         SpawnNote position ->
             let
                 newNote =
@@ -297,7 +304,7 @@ update msg model =
         GetNewTime newTime ->
             let
                 cleanTodoList =
-                    List.filter (\nilTodo -> not (nilTodo.content == "" && (nilTodo.startTime + nilTodo.length < Time.posixToMillis model.time.now))) model.todoList
+                    List.filter (\nilTodo -> not <| nilTodo.content == "" && (nilTodo.startTime + nilTodo.length < Time.posixToMillis model.time.now)) model.todoList
             in
             ( { model
                 | time = { now = newTime, zone = model.time.zone }
@@ -461,7 +468,7 @@ todoGenerator (todo, model) =
                     , div [] [ text ("Start by: " ++ timeStringGenerator model (Time.millisToPosix todo.startTime)) ]
                     ]
                 , td [] [ countdownHtml ]
-                , td [] [ button [ onClick (FinishTodo todo) ] [ text "done" ] ]
+                , td [] [ button [ onClick (RemoveTodo todo) ] [ text "done" ] ]
                 ]
             ]
         ]
@@ -470,10 +477,7 @@ todoEditor :  (Todo, Model) -> String -> Msg
 todoEditor (todo, model) newContent = 
     let 
         reducedTodoList = List.filter (\oldTodo -> oldTodo /= todo) model.todoList
-
         editedTodoList = {todo | content = newContent} :: reducedTodoList
-        _ = Debug.log "edited todo list" editedTodoList
-
     in
     UpdateTodoList editedTodoList
 
@@ -485,7 +489,7 @@ overdueGenerator todo =
                 [ td []
                     [ span [] [ text todo.content ] ]
                 , td [] [ text "overdue" ]
-                , td [] [ button [ onClick (FinishTodo todo) ] [ text "done" ] ]
+                , td [] [ button [ onClick (RemoveTodo todo) ] [ text "done" ] ]
                 ]
             ]
         ]
@@ -498,7 +502,7 @@ todoListGenerator model =
             List.filter (\overdueTodo -> (overdueTodo.startTime + overdueTodo.length) < Time.posixToMillis model.time.now) model.todoList
 
         futureList =
-            List.filter (\overdueTodo -> not (List.member overdueTodo overDueList)) model.todoList
+            List.filter (\overdueTodo -> not <| List.member overdueTodo overDueList) model.todoList
         _ = Debug.log "generator todo list: " futureList
 
     in
@@ -522,7 +526,7 @@ noteGenerator note =
         , style "left" x
         , style "top" y
         ]
-        [ textarea [] [] ]
+        [ div [] [div [] [ div [] [], button [ onClick (RemoveNote note) ] [ text "x" ] ], textarea [] []] ]
 
 
 noteListGenerator : Model -> Html Msg
