@@ -10,22 +10,6 @@ import (
 	"time"
 )
 
-type todo struct {
-	Content   string `json:"content"`
-	StartTime int    `json:"startTime"`
-	Length    int    `json:"length"`
-}
-
-type position struct {
-	X int
-	Y int
-}
-
-type note struct {
-	Content  string   `json:"content"`
-	Position position `json:"position"`
-}
-
 var todoList = []todo{}
 var todoDefaultLength = 15 * 60 * 1000
 
@@ -38,11 +22,6 @@ func roundedTime(time int64) int {
 
 func generateDefaultTodoList() []todo {
 	return []todo{{Content: "Make a Todo!", StartTime: roundedTime(time.Now().UnixMilli()), Length: todoDefaultLength}}
-}
-
-type apiError struct {
-	Err    string
-	Status int
 }
 
 type apiErrorHandlerFunc func(http.ResponseWriter, *http.Request) error
