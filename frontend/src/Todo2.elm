@@ -403,8 +403,7 @@ countdownStringGenerator millisRemaining =
 
 applySelectedTime : Array.Array Int -> Model -> Array.Array ( Int, Bool )
 applySelectedTime selectableTimes model = 
-    let selected = False 
-    in Array.map (\t -> (t, selected)) selectableTimes 
+    Array.map (\t -> (t, model.newTodo.startTime == t)) selectableTimes 
 
 getSelectableTimes : Model -> Array.Array Int
 getSelectableTimes model =
@@ -488,7 +487,9 @@ todoEditor todo model newContent =
 noteEditor :  Note -> Model -> String -> Msg
 noteEditor note model newContent = 
     let 
-        editedNoteArray = model.noteArray
+        newNote = { note | content = newContent}
+        noteIndex = List.foldl (+) 0 (List.map (\(i, n) -> i) (List.filter (\(i, n) -> n == note) (Array.toIndexedList model.noteArray)))
+        editedNoteArray = Array.set noteIndex newNote model.noteArray
         
     in
     UpdateNoteArray editedNoteArray
