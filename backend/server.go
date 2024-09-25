@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -10,9 +12,9 @@ import (
 	"time"
 )
 
+var todoURL = ""
 var todoList = []todo{}
 var todoDefaultLength = 15 * 60 * 1000
-
 var notesList = []note{}
 
 func roundedTime(time int64) int {
@@ -35,6 +37,9 @@ func httpHandler(f apiErrorHandlerFunc) http.HandlerFunc {
 }
 
 func init() {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Set your todo URL: ")
+	todoURL, _ = reader.ReadString('\n')
 	initializeTodoList()
 	initlializeNotesList()
 }
@@ -85,10 +90,10 @@ func syncTodos(w http.ResponseWriter, r *http.Request) error {
 	if len(todoList) == 0 {
 		todoList = generateDefaultTodoList()
 	}
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8000")
+	w.Header().Set("Access-Control-Allow-Origin", todoURL)
 	switch r.Method {
 	case http.MethodOptions:
-		w.Header().Set("Access-Control-Allow-Headers", "content-type")
+		w.Header().Set("Access-Control-Allow-Headers", "content-type, access-control-allow-origin")
 		return nil
 	case http.MethodPost:
 		requestBody, requestBodyErr := io.ReadAll(r.Body)
@@ -112,7 +117,7 @@ func syncTodos(w http.ResponseWriter, r *http.Request) error {
 }
 
 func syncNotes(w http.ResponseWriter, r *http.Request) error {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8000")
+	w.Header().Set("Access-Control-Allow-Origin", todoURL)
 	switch r.Method {
 	case http.MethodOptions:
 		w.Header().Set("Access-Control-Allow-Headers", "content-type")

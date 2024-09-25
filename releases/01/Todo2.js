@@ -5458,7 +5458,6 @@ var $elm$core$Array$fromList = function (list) {
 var $author$project$Todo2$SyncNotes = function (a) {
 	return {$: 'SyncNotes', a: a};
 };
-var $elm$json$Json$Decode$decodeString = _Json_runOnString;
 var $elm$http$Http$BadStatus_ = F2(
 	function (a, b) {
 		return {$: 'BadStatus_', a: a, b: b};
@@ -6001,6 +6000,8 @@ var $elm$core$Dict$update = F3(
 			return A2($elm$core$Dict$remove, targetKey, dictionary);
 		}
 	});
+var $elm$http$Http$emptyBody = _Http_emptyBody;
+var $elm$json$Json$Decode$decodeString = _Json_runOnString;
 var $elm$core$Basics$composeR = F3(
 	function (f, g, x) {
 		return g(
@@ -6072,7 +6073,6 @@ var $elm$http$Http$expectJson = F2(
 						A2($elm$json$Json$Decode$decodeString, decoder, string));
 				}));
 	});
-var $elm$http$Http$emptyBody = _Http_emptyBody;
 var $elm$http$Http$Request = function (a) {
 	return {$: 'Request', a: a};
 };
@@ -6241,22 +6241,28 @@ var $elm$http$Http$request = function (r) {
 		$elm$http$Http$Request(
 			{allowCookiesFromOtherDomains: false, body: r.body, expect: r.expect, headers: r.headers, method: r.method, timeout: r.timeout, tracker: r.tracker, url: r.url}));
 };
-var $elm$http$Http$get = function (r) {
-	return $elm$http$Http$request(
-		{body: $elm$http$Http$emptyBody, expect: r.expect, headers: _List_Nil, method: 'GET', timeout: $elm$core$Maybe$Nothing, tracker: $elm$core$Maybe$Nothing, url: r.url});
-};
 var $elm$json$Json$Decode$value = _Json_decodeValue;
-var $author$project$Todo2$getNoteArray = $elm$http$Http$get(
+var $author$project$Todo2$getNoteArray = $elm$http$Http$request(
 	{
+		body: $elm$http$Http$emptyBody,
 		expect: A2($elm$http$Http$expectJson, $author$project$Todo2$SyncNotes, $elm$json$Json$Decode$value),
+		headers: _List_Nil,
+		method: 'GET',
+		timeout: $elm$core$Maybe$Just(0),
+		tracker: $elm$core$Maybe$Just(''),
 		url: 'http://localhost:7999/sync/notes'
 	});
 var $author$project$Todo2$SyncTodos = function (a) {
 	return {$: 'SyncTodos', a: a};
 };
-var $author$project$Todo2$getTodoList = $elm$http$Http$get(
+var $author$project$Todo2$getTodoList = $elm$http$Http$request(
 	{
+		body: $elm$http$Http$emptyBody,
 		expect: A2($elm$http$Http$expectJson, $author$project$Todo2$SyncTodos, $elm$json$Json$Decode$value),
+		headers: _List_Nil,
+		method: 'GET',
+		timeout: $elm$core$Maybe$Just(0),
+		tracker: $elm$core$Maybe$Just(''),
 		url: 'http://localhost:7999/sync/todo'
 	});
 var $author$project$Todo2$GetNewTime = function (a) {
@@ -6985,16 +6991,16 @@ var $elm$http$Http$jsonBody = function (value) {
 		'application/json',
 		A2($elm$json$Json$Encode$encode, 0, value));
 };
-var $elm$http$Http$post = function (r) {
-	return $elm$http$Http$request(
-		{body: r.body, expect: r.expect, headers: _List_Nil, method: 'POST', timeout: $elm$core$Maybe$Nothing, tracker: $elm$core$Maybe$Nothing, url: r.url});
-};
 var $author$project$Todo2$postNoteArray = function (noteArray) {
-	return $elm$http$Http$post(
+	return $elm$http$Http$request(
 		{
 			body: $elm$http$Http$jsonBody(
 				$author$project$Todo2$encodeNoteArray(noteArray)),
 			expect: A2($elm$http$Http$expectJson, $author$project$Todo2$SyncNotes, $elm$json$Json$Decode$value),
+			headers: _List_Nil,
+			method: 'POST',
+			timeout: $elm$core$Maybe$Just(0),
+			tracker: $elm$core$Maybe$Just(''),
 			url: 'http://localhost:7999/sync/notes'
 		});
 };
@@ -7026,11 +7032,15 @@ var $author$project$Todo2$encodeTodoList = function (todoList) {
 	return A2($elm$json$Json$Encode$list, $author$project$Todo2$todoEncoder, todoList);
 };
 var $author$project$Todo2$postTodoList = function (todoList) {
-	return $elm$http$Http$post(
+	return $elm$http$Http$request(
 		{
 			body: $elm$http$Http$jsonBody(
 				$author$project$Todo2$encodeTodoList(todoList)),
 			expect: A2($elm$http$Http$expectJson, $author$project$Todo2$SyncTodos, $elm$json$Json$Decode$value),
+			headers: _List_Nil,
+			method: 'POST',
+			timeout: $elm$core$Maybe$Just(0),
+			tracker: $elm$core$Maybe$Just(''),
 			url: 'http://localhost:7999/sync/todo'
 		});
 };
