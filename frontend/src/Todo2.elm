@@ -244,8 +244,11 @@ mousePositionDecoderResultsHandler result =
 
 cleanNewTodo : ( Model, Todo ) -> Todo
 cleanNewTodo ( model, todo ) =
+    let roundedTimeMillis =
+            (Time.posixToMillis model.time.now // model.timeSlotLength) * model.timeSlotLength
+    in
     if todo.startTime == 0 then
-        { todo | startTime = getNextFreeTime model }
+        { todo | startTime = roundedTimeMillis }
 
     else
         todo
@@ -367,10 +370,12 @@ timeLeadingZero input =
 timeStringGenerator : Model -> Time.Posix -> String
 timeStringGenerator model timePosix =
     let timeModel = model.time
+        roundedTimeMillis =
+            (Time.posixToMillis timeModel.now // model.timeSlotLength) * model.timeSlotLength
     in
-    if Time.posixToMillis timeModel.now > Time.posixToMillis timePosix then
+    if roundedTimeMillis == Time.posixToMillis timePosix then
         "Now"
-    else if Time.posixToMillis timeModel.now + model.timeSlotLength > Time.posixToMillis timePosix then
+    else if roundedTimeMillis + model.timeSlotLength == Time.posixToMillis timePosix then
         "Next"
     else
         let
@@ -401,36 +406,33 @@ countdownStringGenerator millisRemaining =
     in
     minute ++ ":" ++ second
 
-applySelectedTime : Array.Array Int -> Model -> Array.Array ( Int, Bool )
+applySelectedTime : List Int -> Model -> List ( Int, Bool )
 applySelectedTime selectableTimes model = 
-    Array.map (\t -> (t, model.newTodo.startTime == t)) selectableTimes 
+    List.map (\t -> (t, model.newTodo.startTime == t)) selectableTimes 
 
-getSelectableTimes : Model -> Array.Array Int
+getSelectableTimes : Model -> List Int
 getSelectableTimes model =
     let
         occupiedTimes =
             List.map (\todo -> todo.startTime) model.todoList
         count = model.timeSlotCount
 
-        roundedTimeMillis =
+        roundedTime =
             (Time.posixToMillis model.time.now // model.timeSlotLength) * model.timeSlotLength
 
     in 
     let 
-        sortedTimeArray = Array.initialize count (\i -> timeSorter model (roundedTimeMillis + i * model.timeSlotLength) (List.length occupiedTimes))
+        bloatedTimeList = Array.toList (Array.initialize (count + List.length occupiedTimes) (\i -> roundedTime + i * model.newTodo.length))
+        sortedTimeList = List.filter (\x -> not <| List.member x occupiedTimes) bloatedTimeList
     in
-    sortedTimeArray
-
-timeSorter : Model -> Int -> Int -> Int
-timeSorter model requestedTime occupiedTimesCount = 
-    requestedTime + (occupiedTimesCount * model.timeSlotLength)
+    sortedTimeList
 
 getNextFreeTime : Model -> Int
 getNextFreeTime model =
     let
         selectableTimes = getSelectableTimes model
     in
-    Maybe.withDefault (Time.posixToMillis model.time.now) (Array.get 0 selectableTimes)
+    Maybe.withDefault (Time.posixToMillis model.time.now) (List.head selectableTimes)
 
 
 timeSelectorGenerator : Model -> Html Msg
@@ -441,7 +443,7 @@ timeSelectorGenerator model =
     in
     let
         selectableTimesHtml =
-           Array.toList (Array.map (\( newEndTime, selected ) -> span [] [ input [ checked selected, name "TimeSelector", type_ "radio", onCheck (\check -> NewTodoStartTime newEndTime) ] [], span [] [ text (timeStringGenerator model (Time.millisToPosix newEndTime)) ] ]) (applySelectedTime selectableTimes model))
+           List.map (\( newEndTime, selected ) -> span [] [ input [ checked selected, name "TimeSelector", type_ "radio", onCheck (\check -> NewTodoStartTime newEndTime) ] [], span [] [ text (timeStringGenerator model (Time.millisToPosix newEndTime)) ] ]) (applySelectedTime selectableTimes model)
     in
     span [ style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableTimesHtml
 
@@ -559,7 +561,7 @@ view model =
             [ whiteboard
             , article [ class "TodoList", style "z-index" "3", style "position" "fixed" ]
                 [ header []
-                    [ h1 [] [ text "Todo" ] ]
+                    [ h1 [] [ text ("Todo :" ++ timeStringGenerator model (Time.millisToPosix newTodo.startTime)) ] ]
                 , main_ []
                     [ div []
                         [ span [] [ text "What to do... " ]
