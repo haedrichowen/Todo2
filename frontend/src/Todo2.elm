@@ -67,6 +67,8 @@ defaultTimeSlotLength : Int
 defaultTimeSlotLength =
     15 * 60 * 1000
 
+defaultTodo : Todo
+defaultTodo = { content = "Make a Todo!", startTime = 0, length = defaultTimeSlotLength}
 
 initializeTime : Cmd Msg
 initializeTime =
@@ -77,7 +79,7 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         blankModel =
-            { newTodo = { content = "", startTime = 0, length = defaultTimeSlotLength }
+            { newTodo = { defaultTodo | content = "" }
             , todoList = []
             , noteArray = Array.fromList []
             , time = { now = Time.millisToPosix 0, zone = Time.utc }
@@ -242,8 +244,8 @@ mousePositionDecoderResultsHandler result =
             position
 
 
-cleanNewTodo : ( Model, Todo ) -> Todo
-cleanNewTodo ( model, todo ) =
+cleanNewTodo : Todo -> Model -> Todo
+cleanNewTodo todo model =
     let roundedTimeMillis =
             (Time.posixToMillis model.time.now // model.timeSlotLength) * model.timeSlotLength
     in
@@ -269,7 +271,7 @@ update msg model =
 
         SubmitNewTodo newTodo -> 
             let 
-                newModel = { model | todoList = List.sortBy .startTime (newTodo :: model.todoList) }
+                newModel = { model | todoList = List.sortBy .startTime (cleanNewTodo newTodo model :: model.todoList) }
             in
             ({ newModel
                 | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.timeSlotLength}}
@@ -277,10 +279,14 @@ update msg model =
 
         RemoveTodo todo ->
             let
-                newModel =
-                    { model | todoList = List.filter (\x -> x /= todo) model.todoList }
+                newTodoList = List.filter (\x -> x /= todo) model.todoList
+                newModel = 
+                    if List.isEmpty newTodoList then
+                        { model | todoList = [{defaultTodo | startTime = getNextFreeTime {model | todoList = newTodoList}}] }
+                    else
+                        { model | todoList = newTodoList }                
             in
-            ( newModel, postTodoList newModel.todoList )
+            ( {newModel | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.timeSlotLength}}, postTodoList newModel.todoList )
             
 
         UpdateTodoList newTodoList -> 
@@ -408,7 +414,13 @@ countdownStringGenerator millisRemaining =
 
 applySelectedTime : List Int -> Model -> List ( Int, Bool )
 applySelectedTime selectableTimes model = 
-    List.map (\t -> (t, model.newTodo.startTime == t)) selectableTimes 
+    let
+        userSelectedTime = model.newTodo.startTime
+    in
+    if userSelectedTime == 0 then
+        List.indexedMap (\i t -> (t, i == 0)) selectableTimes
+    else
+        List.map (\t -> (t, userSelectedTime == t)) selectableTimes 
 
 getSelectableTimes : Model -> List Int
 getSelectableTimes model =
@@ -553,7 +565,7 @@ view model =
     let
         whiteboard =
             span [ on "click" (Decoder.map SpawnNote mousePositionDecoder), class "Whiteboard", style "position" "fixed", style "top" "0", style "width" "100vw", style "height" "100vh", style "z-index" "1" ] []
-        newTodo = cleanNewTodo ( model, model.newTodo )
+        newTodo = cleanNewTodo model.newTodo model
     in
     { title = "Todo2"
     , body =
@@ -561,7 +573,7 @@ view model =
             [ whiteboard
             , article [ class "TodoList", style "z-index" "3", style "position" "fixed" ]
                 [ header []
-                    [ h1 [] [ text ("Todo :" ++ timeStringGenerator model (Time.millisToPosix newTodo.startTime)) ] ]
+                    [ h1 [] [ text ("Todo : " ++ timeStringGenerator model (Time.millisToPosix newTodo.startTime)) ] ]
                 , main_ []
                     [ div []
                         [ span [] [ text "What to do... " ]
