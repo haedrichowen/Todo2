@@ -103,7 +103,6 @@ type Msg
     | RemoveTodo Todo
     | UpdateTodoList (List Todo)
     | SpawnNote MousePosition
-    | RemoveNote Note
     | UpdateNoteArray (Array.Array Note)
     | GetNewTime Time.Posix
     | GetTimeZone Time.Zone
@@ -310,13 +309,6 @@ update msg model =
                 newModel = { model | noteArray = Array.append model.noteArray (Array.fromList [newNote]) }
             in 
             ( newModel, postNoteArray newModel.noteArray )
-
-        RemoveNote note ->
-            let
-                newModel = { model | noteArray = Array.filter (\testNote -> testNote /= note) model.noteArray }
-            in
-            (newModel, postNoteArray newModel.noteArray)
-
         UpdateNoteArray newNoteArray -> 
             let
                 newModel = { model | noteArray = newNoteArray }
@@ -448,13 +440,7 @@ getSelectableTimes model =
         endOfOccupiedTime = Basics.max roundedTime (Maybe.withDefault roundedTime (List.maximum (List.map (\x -> x.endTime) occupiedTimeBlocks)))
         selectableGaps = Array.toList <| List.foldr (Array.append) (Array.fromList []) (List.map (\x -> Array.initialize ((x.endTime - x.startTime)//model.newTodo.length) (\i -> x.startTime + i * model.newTodo.length)) timeGaps)
         remainingTimes = Array.toList <| Array.initialize (model.timeSlotCount - List.length selectableGaps) (\i -> endOfOccupiedTime + i * model.newTodo.length)
-        _ = Debug.log "occupiedTimeBlocks" occupiedTimeBlocks
-        _ = Debug.log "roundedTime: " roundedTime
-        _ = Debug.log "endOfOccupiedTime: " endOfOccupiedTime
-        _ = Debug.log "Remaining Times: " selectableGaps
-        _ = Debug.log "Selectable Gaps: " remainingTimes
         selectableTimes = selectableGaps ++ remainingTimes
-        _ = Debug.log "Selectable Times: " selectableTimes
     in selectableTimes
 
 applySelectedTime : List Int -> Model -> List ( Int, Bool )
@@ -567,13 +553,17 @@ noteGenerator note model =
         , style "left" x
         , style "top" y
         ]
-        [ div [] [div [] [ div [] [], button [ onClick (RemoveNote note) ] [ text "x" ] ], textarea [ onInput <| noteEditor note model ] [ text note.content ]] ]
+        [ div [] [div [] [ button [ onClick (UpdateNoteArray (removeNote note model)) ] [ text "x" ], button [ onClick (UpdateNoteArray (moveNote note model)) ] [ text "move" ] ], textarea [ onInput <| noteEditor note model ] [ text note.content ]] ]
 
 
 noteArrayGenerator : Model -> Html Msg
 noteArrayGenerator model =
     div [ style "z-index" "5", style "position" "fixed" ] (Array.toList (Array.map (\x -> x model) (Array.map noteGenerator model.noteArray)))
 
+removeNote : Note -> Model -> Array.Array Note
+removeNote note model = Array.filter (\x -> x /= note) model.noteArray
+moveNote : Note -> Model -> Array.Array Note
+moveNote note model = Array.filter (\x -> x  /= note) model.noteArray
 
 view : Model -> Browser.Document Msg
 view model =
