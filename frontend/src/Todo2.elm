@@ -10,7 +10,7 @@ import Json.Encode as Encoder
 import List
 import Array
 import Platform.Cmd as Cmd
-import String exposing (fromInt)
+import String
 import Task
 import Time
 
@@ -33,7 +33,6 @@ type alias Todo =
     , length : Int
     }
 
-
 type alias Note =
     { content : String
     , position : MousePosition
@@ -52,6 +51,10 @@ type alias TimeModel =
     , now : Time.Posix
     }
 
+type alias TimeBlock = 
+    { startTime : Int
+    , endTime : Int }
+
 
 type alias Model =
     { newTodo : Todo
@@ -59,7 +62,6 @@ type alias Model =
     , noteArray : Array.Array Note
     , time : TimeModel
     , timeSlotCount : Int
-    , timeSlotLength : Int
     }
 
 
@@ -84,7 +86,6 @@ init _ =
             , noteArray = Array.fromList []
             , time = { now = Time.millisToPosix 0, zone = Time.utc }
             , timeSlotCount = 9
-            , timeSlotLength = defaultTimeSlotLength
             }
     in
     ( blankModel, Cmd.batch [ initializeTime, getTodoList, getNoteArray ])
@@ -97,6 +98,7 @@ init _ =
 type Msg
     = NewTodoContent String
     | NewTodoStartTime Int
+    | NewTodoLength Int
     | SubmitNewTodo Todo
     | RemoveTodo Todo
     | UpdateTodoList (List Todo)
@@ -247,7 +249,7 @@ mousePositionDecoderResultsHandler result =
 cleanNewTodo : Todo -> Model -> Todo
 cleanNewTodo todo model =
     let roundedTimeMillis =
-            (Time.posixToMillis model.time.now // model.timeSlotLength) * model.timeSlotLength
+            (Time.posixToMillis model.time.now // model.newTodo.length) * model.newTodo.length
     in
     if todo.startTime == 0 then
         { todo | startTime = roundedTimeMillis }
@@ -260,12 +262,16 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         NewTodoContent newContent ->
-            ( { model | newTodo = { content = newContent, startTime = model.newTodo.startTime, length = model.timeSlotLength } }
+            ( { model | newTodo = { content = newContent, startTime = model.newTodo.startTime, length = model.newTodo.length } }
             , Cmd.none
             )
 
         NewTodoStartTime selectedTime ->
-            ( { model | newTodo = { content = model.newTodo.content, startTime = selectedTime, length = model.timeSlotLength } }
+            ( { model | newTodo = { content = model.newTodo.content, startTime = selectedTime, length = model.newTodo.length } }
+            , Cmd.none
+            )
+
+        NewTodoLength newLength -> ( { model | newTodo = { content = model.newTodo.content, startTime = model.newTodo.startTime, length = newLength } }
             , Cmd.none
             )
 
@@ -274,7 +280,7 @@ update msg model =
                 newModel = { model | todoList = List.sortBy .startTime (cleanNewTodo newTodo model :: model.todoList) }
             in
             ({ newModel
-                | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.timeSlotLength}}
+                | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.newTodo.length}}
             , postTodoList newModel.todoList)
 
         RemoveTodo todo ->
@@ -286,7 +292,7 @@ update msg model =
                     else
                         { model | todoList = newTodoList }                
             in
-            ( {newModel | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.timeSlotLength}}, postTodoList newModel.todoList )
+            ( {newModel | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.newTodo.length}}, postTodoList newModel.todoList )
             
 
         UpdateTodoList newTodoList -> 
@@ -377,11 +383,11 @@ timeStringGenerator : Model -> Time.Posix -> String
 timeStringGenerator model timePosix =
     let timeModel = model.time
         roundedTimeMillis =
-            (Time.posixToMillis timeModel.now // model.timeSlotLength) * model.timeSlotLength
+            (Time.posixToMillis timeModel.now // model.newTodo.length) * model.newTodo.length
     in
-    if roundedTimeMillis == Time.posixToMillis timePosix then
+    if roundedTimeMillis >= Time.posixToMillis timePosix then
         "Now"
-    else if roundedTimeMillis + model.timeSlotLength == Time.posixToMillis timePosix then
+    else if roundedTimeMillis + model.newTodo.length >= Time.posixToMillis timePosix then
         "Next"
     else
         let
@@ -412,41 +418,6 @@ countdownStringGenerator millisRemaining =
     in
     minute ++ ":" ++ second
 
-applySelectedTime : List Int -> Model -> List ( Int, Bool )
-applySelectedTime selectableTimes model = 
-    let
-        userSelectedTime = model.newTodo.startTime
-    in
-    if userSelectedTime == 0 then
-        List.indexedMap (\i t -> (t, i == 0)) selectableTimes
-    else
-        List.map (\t -> (t, userSelectedTime == t)) selectableTimes 
-
-getSelectableTimes : Model -> List Int
-getSelectableTimes model =
-    let
-        occupiedTimes =
-            List.map (\todo -> todo.startTime) model.todoList
-        count = model.timeSlotCount
-
-        roundedTime =
-            (Time.posixToMillis model.time.now // model.timeSlotLength) * model.timeSlotLength
-
-    in 
-    let 
-        bloatedTimeList = Array.toList (Array.initialize (count + List.length occupiedTimes) (\i -> roundedTime + i * model.newTodo.length))
-        sortedTimeList = List.filter (\x -> not <| List.member x occupiedTimes) bloatedTimeList
-    in
-    sortedTimeList
-
-getNextFreeTime : Model -> Int
-getNextFreeTime model =
-    let
-        selectableTimes = getSelectableTimes model
-    in
-    Maybe.withDefault (Time.posixToMillis model.time.now) (List.head selectableTimes)
-
-
 timeSelectorGenerator : Model -> Html Msg
 timeSelectorGenerator model =
     let
@@ -459,6 +430,50 @@ timeSelectorGenerator model =
     in
     span [ style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableTimesHtml
 
+getSelectableTimes : Model -> List Int
+getSelectableTimes model =
+    let roundedTime = ((Time.posixToMillis model.time.now) // model.newTodo.length) * model.newTodo.length
+        occupiedTimeBlocks = List.map (\todo -> {startTime = todo.startTime, endTime = todo.startTime + todo.length}) model.todoList
+        timeGaps = 
+            List.filter (\x -> x.startTime < x.endTime)
+                (List.indexedMap 
+                    (\i timeBlock -> 
+                        {startTime = timeBlock.endTime
+                        , endTime = 
+                            case (Array.get (i + 1) (Array.fromList occupiedTimeBlocks)) of 
+                                Just t -> t.startTime     
+                                Nothing -> 0
+                        }) 
+            occupiedTimeBlocks)
+        endOfOccupiedTime = Basics.max roundedTime (Maybe.withDefault roundedTime (List.maximum (List.map (\x -> x.endTime) occupiedTimeBlocks)))
+        selectableGaps = Array.toList <| List.foldr (Array.append) (Array.fromList []) (List.map (\x -> Array.initialize ((x.endTime - x.startTime)//model.newTodo.length) (\i -> x.startTime + i * model.newTodo.length)) timeGaps)
+        remainingTimes = Array.toList <| Array.initialize (model.timeSlotCount - List.length selectableGaps) (\i -> endOfOccupiedTime + i * model.newTodo.length)
+        _ = Debug.log "occupiedTimeBlocks" occupiedTimeBlocks
+        _ = Debug.log "roundedTime: " roundedTime
+        _ = Debug.log "endOfOccupiedTime: " endOfOccupiedTime
+        _ = Debug.log "Remaining Times: " selectableGaps
+        _ = Debug.log "Selectable Gaps: " remainingTimes
+        selectableTimes = selectableGaps ++ remainingTimes
+        _ = Debug.log "Selectable Times: " selectableTimes
+    in selectableTimes
+
+applySelectedTime : List Int -> Model -> List ( Int, Bool )
+applySelectedTime selectableTimes model = 
+    let
+        userSelectedTime = model.newTodo.startTime
+    in
+    if userSelectedTime == 0 then
+        List.indexedMap (\i t -> (t, i == 0)) selectableTimes
+    else
+        List.map (\t -> (t, userSelectedTime == t)) selectableTimes 
+
+getNextFreeTime : Model -> Int
+getNextFreeTime model =
+    let
+        roundedTime = (Time.posixToMillis model.time.now // model.newTodo.length) * model.newTodo.length
+        selectableTimes = getSelectableTimes model
+    in
+    Maybe.withDefault roundedTime (List.head selectableTimes)
 
 todoGenerator : (Todo, Model) -> Html Msg
 todoGenerator (todo, model) =
@@ -542,10 +557,10 @@ noteGenerator : Note -> Model -> Html Msg
 noteGenerator note model =
     let
         x =
-            fromInt note.position.x ++ "px"
+            String.fromInt note.position.x ++ "px"
 
         y =
-            fromInt note.position.y ++ "px"
+            String.fromInt note.position.y ++ "px"
     in
     div
         [ style "position" "fixed"
@@ -580,15 +595,25 @@ view model =
                         , input [ value model.newTodo.content, onInput NewTodoContent ] []
                         , button [ onClick (SubmitNewTodo newTodo)] [ text "+" ]
                         ]
-                    , div []
-                        [ span [] [ span [] [ text "When... " ], span [ style "display" "inline-block", style "width" "70%" ] [ timeSelectorGenerator model ] ]
+                        , div [] 
+                        [ span [] 
+                            [ span [] [ text "How long " ]
+                            , button [ onClick <| NewTodoLength (model.newTodo.length - 5*60*1000) ] [text "-"], span [] [ text <| countdownStringGenerator model.newTodo.length ]
+                            , button [ onClick <| NewTodoLength (model.newTodo.length + 5*60*1000) ] [text "+"]
+                            ]
+                        ]
+                        , div []
+                        [ span [] 
+                            [   span [] [ text "When " ]
+                            ,   span [ style "display" "inline-block", style "width" "70%" ] [ timeSelectorGenerator model ]
+                            ]
                         ]
                     , hr [] []
                     ]
                 , div []
                     [ todoListGenerator model ]
                 ]
-            , noteArrayGenerator model
-            ]
+                , noteArrayGenerator model
+                ]
         ]
     }
