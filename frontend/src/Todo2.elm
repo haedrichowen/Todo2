@@ -1,6 +1,8 @@
 module Todo2 exposing (..)
 
+import Array
 import Browser
+import Browser.Events
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
@@ -8,12 +10,10 @@ import Http
 import Json.Decode as Decoder
 import Json.Encode as Encoder
 import List
-import Array
 import Platform.Cmd as Cmd
 import String
 import Task
 import Time
-
 
 -- MAIN
 
@@ -33,35 +33,47 @@ type alias Todo =
     , length : Int
     }
 
+
 type alias Note =
     { content : String
-    , position : MousePosition
+    , position : Vector2
     , createdTime : Int
     }
 
-
-type alias MousePosition =
+type alias FloatingNote =
+    { note : Note
+    , moving : Bool
+    }
+type alias Vector2 =
     { x : Int
     , y : Int
     }
 
+vectorAdd : Vector2 -> Vector2 -> Vector2
+vectorAdd v1 v2 = { x = v1.x + v2.x, y = v1.y + v2.y}
+
+vectorDiff : Vector2 -> Vector2 -> Vector2
+vectorDiff v1 v2 = { x = v1.x - v2.x, y = v1.y - v2.y}
 
 type alias TimeModel =
     { zone : Time.Zone
     , now : Time.Posix
     }
 
-type alias TimeBlock = 
+
+type alias TimeBlock =
     { startTime : Int
-    , endTime : Int }
+    , endTime : Int
+    }
 
 
 type alias Model =
     { newTodo : Todo
     , todoList : List Todo
-    , noteArray : Array.Array Note
+    , noteArray : Array.Array FloatingNote
     , time : TimeModel
     , timeSlotCount : Int
+    , pointer : { position : Vector2, velocity : Vector2 }
     }
 
 
@@ -69,8 +81,11 @@ defaultTimeSlotLength : Int
 defaultTimeSlotLength =
     15 * 60 * 1000
 
+
 defaultTodo : Todo
-defaultTodo = { content = "Make a Todo!", startTime = 0, length = defaultTimeSlotLength}
+defaultTodo =
+    { content = "Make a Todo!", startTime = 0, length = defaultTimeSlotLength }
+
 
 initializeTime : Cmd Msg
 initializeTime =
@@ -86,9 +101,10 @@ init _ =
             , noteArray = Array.fromList []
             , time = { now = Time.millisToPosix 0, zone = Time.utc }
             , timeSlotCount = 9
+            , pointer = { velocity = { x = 0, y = 0 }, position = { x = 0, y = 0 } }
             }
     in
-    ( blankModel, Cmd.batch [ initializeTime, getTodoList, getNoteArray ])
+    ( blankModel, Cmd.batch [ initializeTime, getTodoList, getNoteArray ] )
 
 
 
@@ -102,20 +118,21 @@ type Msg
     | SubmitNewTodo Todo
     | RemoveTodo Todo
     | UpdateTodoList (List Todo)
-    | SpawnNote MousePosition
-    | UpdateNoteArray (Array.Array Note)
-    | GetNewTime Time.Posix
-    | GetTimeZone Time.Zone
+    | SpawnNote Vector2
+    | MoveNote Vector2
+    | UpdateNoteArray (Array.Array {note : Note, moving : Bool})
     | SyncTodos (Result Http.Error Decoder.Value)
     | SyncNotes (Result Http.Error Decoder.Value)
-
+    | GetNewTime Time.Posix
+    | GetTimeZone Time.Zone
 
 encodeTodoList : List Todo -> Encoder.Value
 encodeTodoList todoList =
     Encoder.list todoEncoder todoList
 
+
 encodeNoteArray : Array.Array Note -> Encoder.Value
-encodeNoteArray noteArray = 
+encodeNoteArray noteArray =
     Encoder.array noteEncoder noteArray
 
 
@@ -127,19 +144,22 @@ todoEncoder todo =
         , ( "length", Encoder.int todo.length )
         ]
 
+
 noteEncoder : Note -> Encoder.Value
-noteEncoder note = 
-        let 
-            encodedPosition = Encoder.object 
-                [ ("x", Encoder.int note.position.x)
-                , ("y", Encoder.int note.position.y)
+noteEncoder note =
+    let
+        encodedVector2 =
+            Encoder.object
+                [ ( "x", Encoder.int note.position.x )
+                , ( "y", Encoder.int note.position.y )
                 ]
-        in
-        Encoder.object
-            [ ("content", Encoder.string note.content) 
-            , ("position", encodedPosition)
-            , ("createdTime", Encoder.int note.createdTime)
-            ]
+    in
+    Encoder.object
+        [ ( "content", Encoder.string note.content )
+        , ( "position", encodedVector2 )
+        , ( "createdTime", Encoder.int note.createdTime )
+        ]
+
 
 todoDecoder : Decoder.Decoder Todo
 todoDecoder =
@@ -148,12 +168,13 @@ todoDecoder =
         (Decoder.field "startTime" Decoder.int)
         (Decoder.field "length" Decoder.int)
 
+
 noteDecoder : Decoder.Decoder Note
 noteDecoder =
     Decoder.map3 Note
         (Decoder.field "content" Decoder.string)
-        (Decoder.field "position" 
-            (Decoder.map2 MousePosition 
+        (Decoder.field "position"
+            (Decoder.map2 Vector2
                 (Decoder.field "x" Decoder.int)
                 (Decoder.field "y" Decoder.int)
             )
@@ -161,16 +182,11 @@ noteDecoder =
         (Decoder.field "createdTime" Decoder.int)
 
 
-mousePositionDecoder : Decoder.Decoder MousePosition
-mousePositionDecoder =
-    Decoder.map2 MousePosition
-        (Decoder.field "x" Decoder.int)
-        (Decoder.field "y" Decoder.int)
-
-
-decodeMousePosition : Decoder.Value -> MousePosition
-decodeMousePosition encodedPosition =
-    mousePositionDecoderResultsHandler (Decoder.decodeValue mousePositionDecoder encodedPosition)
+positionDecoder : Decoder.Decoder Vector2
+positionDecoder =
+    Decoder.map2 Vector2
+        (Decoder.field "clientX" Decoder.int)
+        (Decoder.field "clientY" Decoder.int)
 
 
 postTodoList : List Todo -> Cmd Msg
@@ -189,6 +205,7 @@ getTodoList =
         , expect = Http.expectJson SyncTodos Decoder.value
         }
 
+
 postNoteArray : Array.Array Note -> Cmd Msg
 postNoteArray noteArray =
     Http.post
@@ -205,6 +222,7 @@ getNoteArray =
         , expect = Http.expectJson SyncNotes Decoder.value
         }
 
+
 todoDecoderResultsHandler : Result Decoder.Error (List Todo) -> List Todo
 todoDecoderResultsHandler result =
     case result of
@@ -217,6 +235,8 @@ todoDecoderResultsHandler result =
 
         Ok todoList ->
             todoList
+
+
 noteDecoderResultsHandler : Result Decoder.Error (Array.Array Note) -> Array.Array Note
 noteDecoderResultsHandler result =
     case result of
@@ -231,23 +251,10 @@ noteDecoderResultsHandler result =
             noteArray
 
 
-mousePositionDecoderResultsHandler : Result Decoder.Error MousePosition -> MousePosition
-mousePositionDecoderResultsHandler result =
-    case result of
-        Err error ->
-            let
-                _ =
-                    Debug.log "Error is " error
-            in
-            { x = 0, y = 0 }
-
-        Ok position ->
-            position
-
-
 cleanNewTodo : Todo -> Model -> Todo
 cleanNewTodo todo model =
-    let roundedTimeMillis =
+    let
+        roundedTimeMillis =
             (Time.posixToMillis model.time.now // model.newTodo.length) * model.newTodo.length
     in
     if todo.startTime == 0 then
@@ -270,62 +277,68 @@ update msg model =
             , Cmd.none
             )
 
-        NewTodoLength newLength -> ( { model | newTodo = { content = model.newTodo.content, startTime = model.newTodo.startTime, length = newLength } }
+        NewTodoLength newLength ->
+            ( { model | newTodo = { content = model.newTodo.content, startTime = model.newTodo.startTime, length = newLength } }
             , Cmd.none
             )
 
-        SubmitNewTodo newTodo -> 
-            let 
-                newModel = { model | todoList = List.sortBy .startTime (cleanNewTodo newTodo model :: model.todoList) }
+        SubmitNewTodo newTodo ->
+            let
+                newModel =
+                    { model | todoList = List.sortBy .startTime (cleanNewTodo newTodo model :: model.todoList) }
             in
-            ({ newModel
-                | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.newTodo.length}}
-            , postTodoList newModel.todoList)
+            ( { newModel
+                | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.newTodo.length }
+              }
+            , postTodoList newModel.todoList
+            )
 
         RemoveTodo todo ->
             let
-                newTodoList = List.filter (\x -> x /= todo) model.todoList
-                newModel = 
-                    if List.isEmpty newTodoList then
-                        { model | todoList = [{defaultTodo | startTime = getNextFreeTime {model | todoList = newTodoList}}] }
-                    else
-                        { model | todoList = newTodoList }                
-            in
-            ( {newModel | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.newTodo.length}}, postTodoList newModel.todoList )
-            
+                newTodoList =
+                    List.filter (\x -> x /= todo) model.todoList
 
-        UpdateTodoList newTodoList -> 
-            let
-                newModel = {model | todoList = List.sortBy .startTime newTodoList}
+                newModel =
+                    if List.isEmpty newTodoList then
+                        { model | todoList = [ { defaultTodo | startTime = getNextFreeTime { model | todoList = newTodoList } } ] }
+
+                    else
+                        { model | todoList = newTodoList }
             in
-            (  newModel
-            
-            , postTodoList newTodoList )
+            ( { newModel | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.newTodo.length } }, postTodoList newModel.todoList )
+
+        UpdateTodoList newTodoList ->
+            let
+                newModel =
+                    { model | todoList = List.sortBy .startTime newTodoList }
+            in
+            ( newModel
+            , postTodoList newTodoList
+            )
 
         SpawnNote position ->
             let
                 newNote =
                     { content = "", position = position, createdTime = Time.posixToMillis model.time.now }
-                newModel = { model | noteArray = Array.append model.noteArray (Array.fromList [newNote]) }
-            in 
-            ( newModel, postNoteArray newModel.noteArray )
-        UpdateNoteArray newNoteArray -> 
+
+                newModel =
+                    { model | noteArray = Array.append model.noteArray (Array.fromList [ { note = newNote, moving = False } ]) }
+            in
+            ( newModel, postNoteArray <| Array.map (\x -> x.note) newModel.noteArray )
+
+        MoveNote newPosition -> 
+            let newModel = {model | pointer = { position = newPosition, velocity = vectorDiff newPosition model.pointer.position }}
+            in
+            ( {newModel | noteArray = Array.map (\x -> if x.moving then {x | note = {content = x.note.content, position = vectorAdd x.note.position newModel.pointer.velocity, createdTime = x.note.createdTime}} else x) newModel.noteArray }
+            , Cmd.none )
+
+        UpdateNoteArray newNoteArray ->
             let
-                newModel = { model | noteArray = newNoteArray }
+                newModel =
+                    { model | noteArray = newNoteArray }
             in
             ( newModel
-            , postNoteArray newModel.noteArray)
-
-        GetNewTime newTime ->
-            ( { model
-                | time = { now = newTime, zone = model.time.zone }
-              }
-            , Cmd.none
-            )
-
-        GetTimeZone timeZone ->
-            ( { model | time = { now = model.time.now, zone = timeZone } }
-            , Cmd.none
+            , postNoteArray (Array.map (\x -> x.note) newModel.noteArray)
             )
 
         SyncTodos result ->
@@ -341,23 +354,33 @@ update msg model =
         SyncNotes result ->
             case result of
                 Ok noteArrayJson ->
-                    ( { model | noteArray = noteDecoderResultsHandler (Decoder.decodeValue (Decoder.array noteDecoder) noteArrayJson) }
+                    ( { model | noteArray = Array.map (\x -> {note = x, moving = False}) (noteDecoderResultsHandler (Decoder.decodeValue (Decoder.array noteDecoder) noteArrayJson)) }
                     , Cmd.none
                     )
 
                 Err _ ->
                     ( model, Cmd.none )
+        
+        GetNewTime newTime ->
+            ( { model
+                | time = { now = newTime, zone = model.time.zone }
+              }
+            , Cmd.none
+            )
 
-
+        GetTimeZone timeZone ->
+            ( { model | time = { now = model.time.now, zone = timeZone } }
+            , Cmd.none
+            )
 
 -- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Time.every 1000 GetNewTime
-
-
+    Sub.batch [
+    Time.every 1000 GetNewTime,
+    Browser.Events.onMouseMove (Decoder.map MoveNote positionDecoder)]
 
 -- VIEW
 
@@ -373,14 +396,19 @@ timeLeadingZero input =
 
 timeStringGenerator : Model -> Time.Posix -> String
 timeStringGenerator model timePosix =
-    let timeModel = model.time
+    let
+        timeModel =
+            model.time
+
         roundedTimeMillis =
             (Time.posixToMillis timeModel.now // model.newTodo.length) * model.newTodo.length
     in
     if roundedTimeMillis >= Time.posixToMillis timePosix then
         "Now"
+
     else if roundedTimeMillis + model.newTodo.length >= Time.posixToMillis timePosix then
         "Next"
+
     else
         let
             hour =
@@ -391,10 +419,13 @@ timeStringGenerator model timePosix =
         in
         if hour > 12 then
             timeLeadingZero (hour - 12) ++ ":" ++ timeLeadingZero minute
+
         else if hour == 0 then
             "12:" ++ timeLeadingZero minute
+
         else
             timeLeadingZero hour ++ ":" ++ timeLeadingZero minute
+
 
 countdownStringGenerator : Int -> String
 countdownStringGenerator millisRemaining =
@@ -410,6 +441,7 @@ countdownStringGenerator millisRemaining =
     in
     minute ++ ":" ++ second
 
+
 timeSelectorGenerator : Model -> Html Msg
 timeSelectorGenerator model =
     let
@@ -418,53 +450,83 @@ timeSelectorGenerator model =
     in
     let
         selectableTimesHtml =
-           List.map (\( newEndTime, selected ) -> span [] [ input [ checked selected, name "TimeSelector", type_ "radio", onCheck (\check -> NewTodoStartTime newEndTime) ] [], span [] [ text (timeStringGenerator model (Time.millisToPosix newEndTime)) ] ]) (applySelectedTime selectableTimes model)
+            List.map (\( newEndTime, selected ) -> span [] [ input [ checked selected, name "TimeSelector", type_ "radio", onCheck (\check -> NewTodoStartTime newEndTime) ] [], span [] [ text (timeStringGenerator model (Time.millisToPosix newEndTime)) ] ]) (applySelectedTime selectableTimes model)
     in
     span [ style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableTimesHtml
 
+
 getSelectableTimes : Model -> List Int
 getSelectableTimes model =
-    let roundedTime = ((Time.posixToMillis model.time.now) // model.newTodo.length) * model.newTodo.length
-        occupiedTimeBlocks = List.map (\todo -> {startTime = todo.startTime, endTime = todo.startTime + todo.length}) model.todoList
-        timeGaps = 
+    let
+        roundedTime =
+            (Time.posixToMillis model.time.now // model.newTodo.length) * model.newTodo.length
+
+        occupiedTimeBlocks =
+            List.map (\todo -> { startTime = todo.startTime, endTime = todo.startTime + todo.length }) model.todoList
+
+        timeGaps =
             List.filter (\x -> x.startTime < x.endTime)
-                (List.indexedMap 
-                    (\i timeBlock -> 
-                        {startTime = timeBlock.endTime
-                        , endTime = 
-                            case (Array.get (i + 1) (Array.fromList occupiedTimeBlocks)) of 
-                                Just t -> t.startTime     
-                                Nothing -> 0
-                        }) 
-            occupiedTimeBlocks)
-        endOfOccupiedTime = Basics.max roundedTime (Maybe.withDefault roundedTime (List.maximum (List.map (\x -> x.endTime) occupiedTimeBlocks)))
-        selectableGaps = Array.toList <| List.foldr (Array.append) (Array.fromList []) (List.map (\x -> Array.initialize ((x.endTime - x.startTime)//model.newTodo.length) (\i -> x.startTime + i * model.newTodo.length)) timeGaps)
-        remainingTimes = Array.toList <| Array.initialize (model.timeSlotCount - List.length selectableGaps) (\i -> endOfOccupiedTime + i * model.newTodo.length)
-        selectableTimes = selectableGaps ++ remainingTimes
-    in selectableTimes
+                (List.indexedMap
+                    (\i timeBlock ->
+                        { startTime = timeBlock.endTime
+                        , endTime =
+                            case Array.get (i + 1) (Array.fromList occupiedTimeBlocks) of
+                                Just t ->
+                                    t.startTime
+
+                                Nothing ->
+                                    0
+                        }
+                    )
+                    occupiedTimeBlocks
+                )
+
+        endOfOccupiedTime =
+            Basics.max roundedTime (Maybe.withDefault roundedTime (List.maximum (List.map (\x -> x.endTime) occupiedTimeBlocks)))
+
+        selectableGaps =
+            Array.toList <| List.foldr Array.append (Array.fromList []) (List.map (\x -> Array.initialize ((x.endTime - x.startTime) // model.newTodo.length) (\i -> x.startTime + i * model.newTodo.length)) timeGaps)
+
+        remainingTimes =
+            Array.toList <| Array.initialize (model.timeSlotCount - List.length selectableGaps) (\i -> endOfOccupiedTime + i * model.newTodo.length)
+
+        selectableTimes =
+            selectableGaps ++ remainingTimes
+    in
+    selectableTimes
+
 
 applySelectedTime : List Int -> Model -> List ( Int, Bool )
-applySelectedTime selectableTimes model = 
+applySelectedTime selectableTimes model =
     let
-        userSelectedTime = model.newTodo.startTime
+        userSelectedTime =
+            model.newTodo.startTime
     in
     if userSelectedTime == 0 then
-        List.indexedMap (\i t -> (t, i == 0)) selectableTimes
+        List.indexedMap (\i t -> ( t, i == 0 )) selectableTimes
+
     else
-        List.map (\t -> (t, userSelectedTime == t)) selectableTimes 
+        List.map (\t -> ( t, userSelectedTime == t )) selectableTimes
+
 
 getNextFreeTime : Model -> Int
 getNextFreeTime model =
     let
-        roundedTime = (Time.posixToMillis model.time.now // model.newTodo.length) * model.newTodo.length
-        selectableTimes = getSelectableTimes model
+        roundedTime =
+            (Time.posixToMillis model.time.now // model.newTodo.length) * model.newTodo.length
+
+        selectableTimes =
+            getSelectableTimes model
     in
     Maybe.withDefault roundedTime (List.head selectableTimes)
 
-todoGenerator : (Todo, Model) -> Html Msg
-todoGenerator (todo, model) =
+
+todoGenerator : ( Todo, Model ) -> Html Msg
+todoGenerator ( todo, model ) =
     let
-        time = model.time
+        time =
+            model.time
+
         todoEndTime =
             todo.startTime + todo.length
 
@@ -491,23 +553,33 @@ todoGenerator (todo, model) =
             ]
         ]
 
-todoEditor :  Todo -> Model -> String -> Msg
-todoEditor todo model newContent = 
-    let 
-        reducedTodoList = List.filter (\oldTodo -> oldTodo /= todo) model.todoList
-        editedTodoList = {todo | content = newContent} :: reducedTodoList
+
+todoEditor : Todo -> Model -> String -> Msg
+todoEditor todo model newContent =
+    let
+        reducedTodoList =
+            List.filter (\oldTodo -> oldTodo /= todo) model.todoList
+
+        editedTodoList =
+            { todo | content = newContent } :: reducedTodoList
     in
     UpdateTodoList editedTodoList
 
-noteEditor :  Note -> Model -> String -> Msg
-noteEditor note model newContent = 
-    let 
-        newNote = { note | content = newContent}
-        noteIndex = List.foldl (+) 0 (List.map (\(i, n) -> i) (List.filter (\(i, n) -> n == note) (Array.toIndexedList model.noteArray)))
-        editedNoteArray = Array.set noteIndex newNote model.noteArray
-        
+
+noteEditor : Note -> Model -> String -> Msg
+noteEditor note model newContent =
+    let
+        newNote =
+            { note | content = newContent }
+
+        noteIndex =
+            List.foldl (+) 0 (List.map (\( i, n ) -> i) (List.filter (\( i, n ) -> n == note) (Array.toIndexedList <| Array.map (\x -> x.note) model.noteArray)))
+
+        editedNoteArray =
+            Array.set noteIndex { note = newNote, moving = False } model.noteArray
     in
     UpdateNoteArray editedNoteArray
+
 
 overdueGenerator : Todo -> Html Msg
 overdueGenerator todo =
@@ -531,11 +603,10 @@ todoListGenerator model =
 
         futureList =
             List.filter (\overdueTodo -> not <| List.member overdueTodo overDueList) model.todoList
-
     in
     div []
         [ ol [] (List.map overdueGenerator overDueList)
-        , ol [] (List.map todoGenerator (List.map (\todo -> (todo, model)) futureList))
+        , ol [] (List.map todoGenerator (List.map (\todo -> ( todo, model )) futureList))
         ]
 
 
@@ -553,49 +624,67 @@ noteGenerator note model =
         , style "left" x
         , style "top" y
         ]
-        [ div [] [div [] [ button [ onClick (UpdateNoteArray (removeNote note model)) ] [ text "x" ], button [ onClick (UpdateNoteArray (moveNote note model)) ] [ text "move" ] ], textarea [ onInput <| noteEditor note model ] [ text note.content ]] ]
+        [ div []
+            [ div []
+                [ button [ onClick (UpdateNoteArray (removeNote note model)) ] [ text "x" ]
+                , button
+                    [ onMouseDown (UpdateNoteArray (setMovingNote note True model))
+                    , onMouseUp (UpdateNoteArray (setMovingNote note False model))
+                    , onDoubleClick (UpdateNoteArray (setMovingNote note True model))]
+                    [ text "move" ]
+                ]
+            , textarea [ onInput <| noteEditor note model ] [ text note.content ]
+            ]
+        ]
 
 
 noteArrayGenerator : Model -> Html Msg
 noteArrayGenerator model =
-    div [ style "z-index" "5", style "position" "fixed" ] (Array.toList (Array.map (\x -> x model) (Array.map noteGenerator model.noteArray)))
+    div [ style "z-index" "5", style "position" "fixed" ] (Array.toList (Array.map (\x -> x model) (Array.map noteGenerator (Array.map (\x -> x.note) model.noteArray))))
 
-removeNote : Note -> Model -> Array.Array Note
-removeNote note model = Array.filter (\x -> x /= note) model.noteArray
-moveNote : Note -> Model -> Array.Array Note
-moveNote note model = Array.filter (\x -> x  /= note) model.noteArray
+
+removeNote : Note -> Model -> Array.Array FloatingNote
+removeNote note model =
+    Array.filter (\x -> x.note /= note) model.noteArray
+
+
+setMovingNote : Note -> Bool -> Model -> Array.Array FloatingNote
+setMovingNote selectedNote state model =
+    Array.append (Array.fromList [ { note = selectedNote, moving = state }]) (Array.filter (\x -> x.note /= selectedNote) model.noteArray)
 
 view : Model -> Browser.Document Msg
 view model =
     let
         whiteboard =
-            span [ on "click" (Decoder.map SpawnNote mousePositionDecoder), class "Whiteboard", style "position" "fixed", style "top" "0", style "width" "100vw", style "height" "100vh", style "z-index" "1" ] []
-        newTodo = cleanNewTodo model.newTodo model
+            span [ on "click" (Decoder.map SpawnNote positionDecoder), class "Whiteboard", style "position" "fixed", style "top" "0", style "width" "100vw", style "height" "100vh", style "z-index" "1" ] []
+
+        newTodo =
+            cleanNewTodo model.newTodo model
     in
-    { title = "Todo2"
+    { title = "Todo2 "
     , body =
         [ div [ style "display" "flex", style "justify-content" "center", style "width" "100vw", style "height" "100vh" ]
             [ whiteboard
             , article [ class "TodoList", style "z-index" "3", style "position" "fixed" ]
                 [ header []
-                    [ h1 [] [ text ("Todo : " ++ timeStringGenerator model (Time.millisToPosix newTodo.startTime)) ] ]
+                    [ h1 [] [ text ("Todo : " ++ timeStringGenerator model (Time.millisToPosix newTodo.startTime))] ]
                 , main_ []
                     [ div []
-                        [ span [] [ text "What to do... " ]
-                        , input [ value model.newTodo.content, onInput NewTodoContent ] []
-                        , button [ onClick (SubmitNewTodo newTodo)] [ text "+" ]
+                        [ input [ value model.newTodo.content, onInput NewTodoContent ] []
+                        , button [ onClick (SubmitNewTodo newTodo) ] [ text "+" ]
                         ]
-                        , div [] 
-                        [ span [] 
+                    , div []
+                        [ span []
                             [ span [] [ text "How long " ]
-                            , button [ onClick <| NewTodoLength (model.newTodo.length - 5*60*1000) ] [text "-"], span [] [ text <| countdownStringGenerator model.newTodo.length ]
-                            , button [ onClick <| NewTodoLength (model.newTodo.length + 5*60*1000) ] [text "+"]
+                            , button [ onClick <| NewTodoLength (model.newTodo.length - 5 * 60 * 1000) ] [ text "-" ]
+                            , span [] [ text <| countdownStringGenerator model.newTodo.length ]
+                            , button [ onClick <| NewTodoLength (model.newTodo.length + 5 * 60 * 1000) ] [ text "+" ]
                             ]
                         ]
-                        , div []
-                        [ span [] 
-                            [   span [] [ text "When " ]
-                            ,   span [ style "display" "inline-block", style "width" "70%" ] [ timeSelectorGenerator model ]
+                    , div []
+                        [ span []
+                            [ span [] [ text "When " ]
+                            , span [ style "display" "inline-block", style "width" "70%" ] [ timeSelectorGenerator model ]
                             ]
                         ]
                     , hr [] []
@@ -603,7 +692,7 @@ view model =
                 , div []
                     [ todoListGenerator model ]
                 ]
-                , noteArrayGenerator model
-                ]
+            , noteArrayGenerator model
+            ]
         ]
     }
