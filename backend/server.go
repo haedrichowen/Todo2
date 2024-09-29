@@ -81,6 +81,8 @@ func initlializeNotesList() {
 }
 
 func main() {
+	fileServer := http.FileServer(http.Dir("./frontend"))
+	http.Handle("/", fileServer)
 	http.HandleFunc("/sync/todo", httpHandler(syncTodos))
 	http.HandleFunc("/sync/notes", httpHandler(syncNotes))
 	http.ListenAndServe(":7999", nil)
