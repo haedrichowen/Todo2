@@ -5458,6 +5458,7 @@ var $elm$core$Array$fromList = function (list) {
 var $author$project$Todo2$SyncNotes = function (a) {
 	return {$: 'SyncNotes', a: a};
 };
+var $elm$json$Json$Decode$decodeString = _Json_runOnString;
 var $elm$http$Http$BadStatus_ = F2(
 	function (a, b) {
 		return {$: 'BadStatus_', a: a, b: b};
@@ -6000,8 +6001,6 @@ var $elm$core$Dict$update = F3(
 			return A2($elm$core$Dict$remove, targetKey, dictionary);
 		}
 	});
-var $elm$http$Http$emptyBody = _Http_emptyBody;
-var $elm$json$Json$Decode$decodeString = _Json_runOnString;
 var $elm$core$Basics$composeR = F3(
 	function (f, g, x) {
 		return g(
@@ -6073,6 +6072,7 @@ var $elm$http$Http$expectJson = F2(
 						A2($elm$json$Json$Decode$decodeString, decoder, string));
 				}));
 	});
+var $elm$http$Http$emptyBody = _Http_emptyBody;
 var $elm$http$Http$Request = function (a) {
 	return {$: 'Request', a: a};
 };
@@ -6241,28 +6241,22 @@ var $elm$http$Http$request = function (r) {
 		$elm$http$Http$Request(
 			{allowCookiesFromOtherDomains: false, body: r.body, expect: r.expect, headers: r.headers, method: r.method, timeout: r.timeout, tracker: r.tracker, url: r.url}));
 };
+var $elm$http$Http$get = function (r) {
+	return $elm$http$Http$request(
+		{body: $elm$http$Http$emptyBody, expect: r.expect, headers: _List_Nil, method: 'GET', timeout: $elm$core$Maybe$Nothing, tracker: $elm$core$Maybe$Nothing, url: r.url});
+};
 var $elm$json$Json$Decode$value = _Json_decodeValue;
-var $author$project$Todo2$getNoteArray = $elm$http$Http$request(
+var $author$project$Todo2$getNoteArray = $elm$http$Http$get(
 	{
-		body: $elm$http$Http$emptyBody,
 		expect: A2($elm$http$Http$expectJson, $author$project$Todo2$SyncNotes, $elm$json$Json$Decode$value),
-		headers: _List_Nil,
-		method: 'GET',
-		timeout: $elm$core$Maybe$Just(0),
-		tracker: $elm$core$Maybe$Just(''),
 		url: 'http://localhost:7999/sync/notes'
 	});
 var $author$project$Todo2$SyncTodos = function (a) {
 	return {$: 'SyncTodos', a: a};
 };
-var $author$project$Todo2$getTodoList = $elm$http$Http$request(
+var $author$project$Todo2$getTodoList = $elm$http$Http$get(
 	{
-		body: $elm$http$Http$emptyBody,
 		expect: A2($elm$http$Http$expectJson, $author$project$Todo2$SyncTodos, $elm$json$Json$Decode$value),
-		headers: _List_Nil,
-		method: 'GET',
-		timeout: $elm$core$Maybe$Just(0),
-		tracker: $elm$core$Maybe$Just(''),
 		url: 'http://localhost:7999/sync/todo'
 	});
 var $author$project$Todo2$GetNewTime = function (a) {
@@ -6301,12 +6295,15 @@ var $author$project$Todo2$init = function (_v0) {
 			$author$project$Todo2$defaultTodo,
 			{content: ''}),
 		noteArray: $elm$core$Array$fromList(_List_Nil),
+		pointer: {
+			position: {x: 0, y: 0},
+			velocity: {x: 0, y: 0}
+		},
 		time: {
 			now: $elm$time$Time$millisToPosix(0),
 			zone: $elm$time$Time$utc
 		},
 		timeSlotCount: 9,
-		timeSlotLength: $author$project$Todo2$defaultTimeSlotLength,
 		todoList: _List_Nil
 	};
 	return _Utils_Tuple2(
@@ -6315,6 +6312,10 @@ var $author$project$Todo2$init = function (_v0) {
 			_List_fromArray(
 				[$author$project$Todo2$initializeTime, $author$project$Todo2$getTodoList, $author$project$Todo2$getNoteArray])));
 };
+var $author$project$Todo2$MoveNote = function (a) {
+	return {$: 'MoveNote', a: a};
+};
+var $elm$core$Platform$Sub$batch = _Platform_batch;
 var $elm$time$Time$Every = F2(
 	function (a, b) {
 		return {$: 'Every', a: a, b: b};
@@ -6569,8 +6570,209 @@ var $elm$time$Time$every = F2(
 		return $elm$time$Time$subscription(
 			A2($elm$time$Time$Every, interval, tagger));
 	});
+var $elm$browser$Browser$Events$Document = {$: 'Document'};
+var $elm$browser$Browser$Events$MySub = F3(
+	function (a, b, c) {
+		return {$: 'MySub', a: a, b: b, c: c};
+	});
+var $elm$browser$Browser$Events$State = F2(
+	function (subs, pids) {
+		return {pids: pids, subs: subs};
+	});
+var $elm$browser$Browser$Events$init = $elm$core$Task$succeed(
+	A2($elm$browser$Browser$Events$State, _List_Nil, $elm$core$Dict$empty));
+var $elm$browser$Browser$Events$nodeToKey = function (node) {
+	if (node.$ === 'Document') {
+		return 'd_';
+	} else {
+		return 'w_';
+	}
+};
+var $elm$browser$Browser$Events$addKey = function (sub) {
+	var node = sub.a;
+	var name = sub.b;
+	return _Utils_Tuple2(
+		_Utils_ap(
+			$elm$browser$Browser$Events$nodeToKey(node),
+			name),
+		sub);
+};
+var $elm$core$Dict$fromList = function (assocs) {
+	return A3(
+		$elm$core$List$foldl,
+		F2(
+			function (_v0, dict) {
+				var key = _v0.a;
+				var value = _v0.b;
+				return A3($elm$core$Dict$insert, key, value, dict);
+			}),
+		$elm$core$Dict$empty,
+		assocs);
+};
+var $elm$browser$Browser$Events$Event = F2(
+	function (key, event) {
+		return {event: event, key: key};
+	});
+var $elm$browser$Browser$Events$spawn = F3(
+	function (router, key, _v0) {
+		var node = _v0.a;
+		var name = _v0.b;
+		var actualNode = function () {
+			if (node.$ === 'Document') {
+				return _Browser_doc;
+			} else {
+				return _Browser_window;
+			}
+		}();
+		return A2(
+			$elm$core$Task$map,
+			function (value) {
+				return _Utils_Tuple2(key, value);
+			},
+			A3(
+				_Browser_on,
+				actualNode,
+				name,
+				function (event) {
+					return A2(
+						$elm$core$Platform$sendToSelf,
+						router,
+						A2($elm$browser$Browser$Events$Event, key, event));
+				}));
+	});
+var $elm$core$Dict$union = F2(
+	function (t1, t2) {
+		return A3($elm$core$Dict$foldl, $elm$core$Dict$insert, t2, t1);
+	});
+var $elm$browser$Browser$Events$onEffects = F3(
+	function (router, subs, state) {
+		var stepRight = F3(
+			function (key, sub, _v6) {
+				var deads = _v6.a;
+				var lives = _v6.b;
+				var news = _v6.c;
+				return _Utils_Tuple3(
+					deads,
+					lives,
+					A2(
+						$elm$core$List$cons,
+						A3($elm$browser$Browser$Events$spawn, router, key, sub),
+						news));
+			});
+		var stepLeft = F3(
+			function (_v4, pid, _v5) {
+				var deads = _v5.a;
+				var lives = _v5.b;
+				var news = _v5.c;
+				return _Utils_Tuple3(
+					A2($elm$core$List$cons, pid, deads),
+					lives,
+					news);
+			});
+		var stepBoth = F4(
+			function (key, pid, _v2, _v3) {
+				var deads = _v3.a;
+				var lives = _v3.b;
+				var news = _v3.c;
+				return _Utils_Tuple3(
+					deads,
+					A3($elm$core$Dict$insert, key, pid, lives),
+					news);
+			});
+		var newSubs = A2($elm$core$List$map, $elm$browser$Browser$Events$addKey, subs);
+		var _v0 = A6(
+			$elm$core$Dict$merge,
+			stepLeft,
+			stepBoth,
+			stepRight,
+			state.pids,
+			$elm$core$Dict$fromList(newSubs),
+			_Utils_Tuple3(_List_Nil, $elm$core$Dict$empty, _List_Nil));
+		var deadPids = _v0.a;
+		var livePids = _v0.b;
+		var makeNewPids = _v0.c;
+		return A2(
+			$elm$core$Task$andThen,
+			function (pids) {
+				return $elm$core$Task$succeed(
+					A2(
+						$elm$browser$Browser$Events$State,
+						newSubs,
+						A2(
+							$elm$core$Dict$union,
+							livePids,
+							$elm$core$Dict$fromList(pids))));
+			},
+			A2(
+				$elm$core$Task$andThen,
+				function (_v1) {
+					return $elm$core$Task$sequence(makeNewPids);
+				},
+				$elm$core$Task$sequence(
+					A2($elm$core$List$map, $elm$core$Process$kill, deadPids))));
+	});
+var $elm$browser$Browser$Events$onSelfMsg = F3(
+	function (router, _v0, state) {
+		var key = _v0.key;
+		var event = _v0.event;
+		var toMessage = function (_v2) {
+			var subKey = _v2.a;
+			var _v3 = _v2.b;
+			var node = _v3.a;
+			var name = _v3.b;
+			var decoder = _v3.c;
+			return _Utils_eq(subKey, key) ? A2(_Browser_decodeEvent, decoder, event) : $elm$core$Maybe$Nothing;
+		};
+		var messages = A2($elm$core$List$filterMap, toMessage, state.subs);
+		return A2(
+			$elm$core$Task$andThen,
+			function (_v1) {
+				return $elm$core$Task$succeed(state);
+			},
+			$elm$core$Task$sequence(
+				A2(
+					$elm$core$List$map,
+					$elm$core$Platform$sendToApp(router),
+					messages)));
+	});
+var $elm$browser$Browser$Events$subMap = F2(
+	function (func, _v0) {
+		var node = _v0.a;
+		var name = _v0.b;
+		var decoder = _v0.c;
+		return A3(
+			$elm$browser$Browser$Events$MySub,
+			node,
+			name,
+			A2($elm$json$Json$Decode$map, func, decoder));
+	});
+_Platform_effectManagers['Browser.Events'] = _Platform_createManager($elm$browser$Browser$Events$init, $elm$browser$Browser$Events$onEffects, $elm$browser$Browser$Events$onSelfMsg, 0, $elm$browser$Browser$Events$subMap);
+var $elm$browser$Browser$Events$subscription = _Platform_leaf('Browser.Events');
+var $elm$browser$Browser$Events$on = F3(
+	function (node, name, decoder) {
+		return $elm$browser$Browser$Events$subscription(
+			A3($elm$browser$Browser$Events$MySub, node, name, decoder));
+	});
+var $elm$browser$Browser$Events$onMouseMove = A2($elm$browser$Browser$Events$on, $elm$browser$Browser$Events$Document, 'mousemove');
+var $author$project$Todo2$Vector2 = F2(
+	function (x, y) {
+		return {x: x, y: y};
+	});
+var $elm$json$Json$Decode$field = _Json_decodeField;
+var $elm$json$Json$Decode$int = _Json_decodeInt;
+var $author$project$Todo2$positionDecoder = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Todo2$Vector2,
+	A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$int));
 var $author$project$Todo2$subscriptions = function (_v0) {
-	return A2($elm$time$Time$every, 1000, $author$project$Todo2$GetNewTime);
+	return $elm$core$Platform$Sub$batch(
+		_List_fromArray(
+			[
+				A2($elm$time$Time$every, 1000, $author$project$Todo2$GetNewTime),
+				$elm$browser$Browser$Events$onMouseMove(
+				A2($elm$json$Json$Decode$map, $author$project$Todo2$MoveNote, $author$project$Todo2$positionDecoder))
+			]));
 };
 var $elm$core$Elm$JsArray$appendN = _JsArray_appendN;
 var $elm$core$Elm$JsArray$slice = _JsArray_slice;
@@ -6760,24 +6962,12 @@ var $elm$time$Time$posixToMillis = function (_v0) {
 };
 var $author$project$Todo2$cleanNewTodo = F2(
 	function (todo, model) {
-		var roundedTimeMillis = (($elm$time$Time$posixToMillis(model.time.now) / model.timeSlotLength) | 0) * model.timeSlotLength;
+		var roundedTimeMillis = (($elm$time$Time$posixToMillis(model.time.now) / model.newTodo.length) | 0) * model.newTodo.length;
 		return (!todo.startTime) ? _Utils_update(
 			todo,
 			{startTime: roundedTimeMillis}) : todo;
 	});
 var $elm$json$Json$Decode$decodeValue = _Json_run;
-var $elm$core$Array$filter = F2(
-	function (isGood, array) {
-		return $elm$core$Array$fromList(
-			A3(
-				$elm$core$Array$foldr,
-				F2(
-					function (x, xs) {
-						return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
-					}),
-				_List_Nil,
-				array));
-	});
 var $elm$core$List$filter = F2(
 	function (isGood, list) {
 		return A3(
@@ -6789,66 +6979,48 @@ var $elm$core$List$filter = F2(
 			_List_Nil,
 			list);
 	});
-var $elm$core$List$any = F2(
-	function (isOkay, list) {
-		any:
+var $elm$core$Array$getHelp = F3(
+	function (shift, index, tree) {
+		getHelp:
 		while (true) {
-			if (!list.b) {
-				return false;
+			var pos = $elm$core$Array$bitMask & (index >>> shift);
+			var _v0 = A2($elm$core$Elm$JsArray$unsafeGet, pos, tree);
+			if (_v0.$ === 'SubTree') {
+				var subTree = _v0.a;
+				var $temp$shift = shift - $elm$core$Array$shiftStep,
+					$temp$index = index,
+					$temp$tree = subTree;
+				shift = $temp$shift;
+				index = $temp$index;
+				tree = $temp$tree;
+				continue getHelp;
 			} else {
-				var x = list.a;
-				var xs = list.b;
-				if (isOkay(x)) {
-					return true;
-				} else {
-					var $temp$isOkay = isOkay,
-						$temp$list = xs;
-					isOkay = $temp$isOkay;
-					list = $temp$list;
-					continue any;
-				}
+				var values = _v0.a;
+				return A2($elm$core$Elm$JsArray$unsafeGet, $elm$core$Array$bitMask & index, values);
 			}
 		}
 	});
-var $elm$core$List$member = F2(
-	function (x, xs) {
-		return A2(
-			$elm$core$List$any,
-			function (a) {
-				return _Utils_eq(a, x);
-			},
-			xs);
-	});
-var $elm$core$Basics$not = _Basics_not;
-var $author$project$Todo2$getSelectableTimes = function (model) {
-	var roundedTime = (($elm$time$Time$posixToMillis(model.time.now) / model.timeSlotLength) | 0) * model.timeSlotLength;
-	var occupiedTimes = A2(
-		$elm$core$List$map,
-		function (todo) {
-			return todo.startTime;
-		},
-		model.todoList);
-	var count = model.timeSlotCount;
-	var bloatedTimeList = $elm$core$Array$toList(
-		A2(
-			$elm$core$Array$initialize,
-			count + $elm$core$List$length(occupiedTimes),
-			function (i) {
-				return roundedTime + (i * model.newTodo.length);
-			}));
-	var sortedTimeList = A2(
-		$elm$core$List$filter,
-		function (x) {
-			return !A2($elm$core$List$member, x, occupiedTimes);
-		},
-		bloatedTimeList);
-	return sortedTimeList;
+var $elm$core$Array$tailIndex = function (len) {
+	return (len >>> 5) << 5;
 };
-var $elm$core$List$head = function (list) {
+var $elm$core$Array$get = F2(
+	function (index, _v0) {
+		var len = _v0.a;
+		var startShift = _v0.b;
+		var tree = _v0.c;
+		var tail = _v0.d;
+		return ((index < 0) || (_Utils_cmp(index, len) > -1)) ? $elm$core$Maybe$Nothing : ((_Utils_cmp(
+			index,
+			$elm$core$Array$tailIndex(len)) > -1) ? $elm$core$Maybe$Just(
+			A2($elm$core$Elm$JsArray$unsafeGet, $elm$core$Array$bitMask & index, tail)) : $elm$core$Maybe$Just(
+			A3($elm$core$Array$getHelp, startShift, index, tree)));
+	});
+var $elm$core$List$maximum = function (list) {
 	if (list.b) {
 		var x = list.a;
 		var xs = list.b;
-		return $elm$core$Maybe$Just(x);
+		return $elm$core$Maybe$Just(
+			A3($elm$core$List$foldl, $elm$core$Basics$max, x, xs));
 	} else {
 		return $elm$core$Maybe$Nothing;
 	}
@@ -6862,11 +7034,94 @@ var $elm$core$Maybe$withDefault = F2(
 			return _default;
 		}
 	});
+var $author$project$Todo2$getSelectableTimes = function (model) {
+	var roundedTime = (($elm$time$Time$posixToMillis(model.time.now) / model.newTodo.length) | 0) * model.newTodo.length;
+	var occupiedTimeBlocks = A2(
+		$elm$core$List$map,
+		function (todo) {
+			return {endTime: todo.startTime + todo.length, startTime: todo.startTime};
+		},
+		model.todoList);
+	var timeGaps = A2(
+		$elm$core$List$filter,
+		function (x) {
+			return _Utils_cmp(x.startTime, x.endTime) < 0;
+		},
+		A2(
+			$elm$core$List$indexedMap,
+			F2(
+				function (i, timeBlock) {
+					return {
+						endTime: function () {
+							var _v0 = A2(
+								$elm$core$Array$get,
+								i + 1,
+								$elm$core$Array$fromList(occupiedTimeBlocks));
+							if (_v0.$ === 'Just') {
+								var t = _v0.a;
+								return t.startTime;
+							} else {
+								return 0;
+							}
+						}(),
+						startTime: timeBlock.endTime
+					};
+				}),
+			occupiedTimeBlocks));
+	var selectableGaps = $elm$core$Array$toList(
+		A3(
+			$elm$core$List$foldr,
+			$elm$core$Array$append,
+			$elm$core$Array$fromList(_List_Nil),
+			A2(
+				$elm$core$List$map,
+				function (x) {
+					return A2(
+						$elm$core$Array$initialize,
+						((x.endTime - x.startTime) / model.newTodo.length) | 0,
+						function (i) {
+							return x.startTime + (i * model.newTodo.length);
+						});
+				},
+				timeGaps)));
+	var endOfOccupiedTime = A2(
+		$elm$core$Basics$max,
+		roundedTime,
+		A2(
+			$elm$core$Maybe$withDefault,
+			roundedTime,
+			$elm$core$List$maximum(
+				A2(
+					$elm$core$List$map,
+					function (x) {
+						return x.endTime;
+					},
+					occupiedTimeBlocks))));
+	var remainingTimes = $elm$core$Array$toList(
+		A2(
+			$elm$core$Array$initialize,
+			model.timeSlotCount - $elm$core$List$length(selectableGaps),
+			function (i) {
+				return endOfOccupiedTime + (i * model.newTodo.length);
+			}));
+	var selectableTimes = _Utils_ap(selectableGaps, remainingTimes);
+	return selectableTimes;
+};
+var $elm$core$List$head = function (list) {
+	if (list.b) {
+		var x = list.a;
+		var xs = list.b;
+		return $elm$core$Maybe$Just(x);
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
 var $author$project$Todo2$getNextFreeTime = function (model) {
 	var selectableTimes = $author$project$Todo2$getSelectableTimes(model);
+	var roundedTime = (($elm$time$Time$posixToMillis(model.time.now) / model.newTodo.length) | 0) * model.newTodo.length;
 	return A2(
 		$elm$core$Maybe$withDefault,
-		$elm$time$Time$posixToMillis(model.time.now),
+		roundedTime,
 		$elm$core$List$head(selectableTimes));
 };
 var $elm$core$List$isEmpty = function (xs) {
@@ -6877,18 +7132,37 @@ var $elm$core$List$isEmpty = function (xs) {
 	}
 };
 var $elm$json$Json$Decode$list = _Json_decodeList;
+var $elm$core$Elm$JsArray$map = _JsArray_map;
+var $elm$core$Array$map = F2(
+	function (func, _v0) {
+		var len = _v0.a;
+		var startShift = _v0.b;
+		var tree = _v0.c;
+		var tail = _v0.d;
+		var helper = function (node) {
+			if (node.$ === 'SubTree') {
+				var subTree = node.a;
+				return $elm$core$Array$SubTree(
+					A2($elm$core$Elm$JsArray$map, helper, subTree));
+			} else {
+				var values = node.a;
+				return $elm$core$Array$Leaf(
+					A2($elm$core$Elm$JsArray$map, func, values));
+			}
+		};
+		return A4(
+			$elm$core$Array$Array_elm_builtin,
+			len,
+			startShift,
+			A2($elm$core$Elm$JsArray$map, helper, tree),
+			A2($elm$core$Elm$JsArray$map, func, tail));
+	});
 var $elm$core$Basics$neq = _Utils_notEqual;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
-var $author$project$Todo2$MousePosition = F2(
-	function (x, y) {
-		return {x: x, y: y};
-	});
 var $author$project$Todo2$Note = F3(
 	function (content, position, createdTime) {
 		return {content: content, createdTime: createdTime, position: position};
 	});
-var $elm$json$Json$Decode$field = _Json_decodeField;
-var $elm$json$Json$Decode$int = _Json_decodeInt;
 var $elm$json$Json$Decode$map3 = _Json_map3;
 var $elm$json$Json$Decode$string = _Json_decodeString;
 var $author$project$Todo2$noteDecoder = A4(
@@ -6900,7 +7174,7 @@ var $author$project$Todo2$noteDecoder = A4(
 		'position',
 		A3(
 			$elm$json$Json$Decode$map2,
-			$author$project$Todo2$MousePosition,
+			$author$project$Todo2$Vector2,
 			A2($elm$json$Json$Decode$field, 'x', $elm$json$Json$Decode$int),
 			A2($elm$json$Json$Decode$field, 'y', $elm$json$Json$Decode$int))),
 	A2($elm$json$Json$Decode$field, 'createdTime', $elm$json$Json$Decode$int));
@@ -6960,7 +7234,7 @@ var $elm$json$Json$Encode$object = function (pairs) {
 };
 var $elm$json$Json$Encode$string = _Json_wrap;
 var $author$project$Todo2$noteEncoder = function (note) {
-	var encodedPosition = $elm$json$Json$Encode$object(
+	var encodedVector2 = $elm$json$Json$Encode$object(
 		_List_fromArray(
 			[
 				_Utils_Tuple2(
@@ -6976,7 +7250,7 @@ var $author$project$Todo2$noteEncoder = function (note) {
 				_Utils_Tuple2(
 				'content',
 				$elm$json$Json$Encode$string(note.content)),
-				_Utils_Tuple2('position', encodedPosition),
+				_Utils_Tuple2('position', encodedVector2),
 				_Utils_Tuple2(
 				'createdTime',
 				$elm$json$Json$Encode$int(note.createdTime))
@@ -6991,16 +7265,16 @@ var $elm$http$Http$jsonBody = function (value) {
 		'application/json',
 		A2($elm$json$Json$Encode$encode, 0, value));
 };
-var $author$project$Todo2$postNoteArray = function (noteArray) {
+var $elm$http$Http$post = function (r) {
 	return $elm$http$Http$request(
+		{body: r.body, expect: r.expect, headers: _List_Nil, method: 'POST', timeout: $elm$core$Maybe$Nothing, tracker: $elm$core$Maybe$Nothing, url: r.url});
+};
+var $author$project$Todo2$postNoteArray = function (noteArray) {
+	return $elm$http$Http$post(
 		{
 			body: $elm$http$Http$jsonBody(
 				$author$project$Todo2$encodeNoteArray(noteArray)),
 			expect: A2($elm$http$Http$expectJson, $author$project$Todo2$SyncNotes, $elm$json$Json$Decode$value),
-			headers: _List_Nil,
-			method: 'POST',
-			timeout: $elm$core$Maybe$Just(0),
-			tracker: $elm$core$Maybe$Just(''),
 			url: 'http://localhost:7999/sync/notes'
 		});
 };
@@ -7032,15 +7306,11 @@ var $author$project$Todo2$encodeTodoList = function (todoList) {
 	return A2($elm$json$Json$Encode$list, $author$project$Todo2$todoEncoder, todoList);
 };
 var $author$project$Todo2$postTodoList = function (todoList) {
-	return $elm$http$Http$request(
+	return $elm$http$Http$post(
 		{
 			body: $elm$http$Http$jsonBody(
 				$author$project$Todo2$encodeTodoList(todoList)),
 			expect: A2($elm$http$Http$expectJson, $author$project$Todo2$SyncTodos, $elm$json$Json$Decode$value),
-			headers: _List_Nil,
-			method: 'POST',
-			timeout: $elm$core$Maybe$Just(0),
-			tracker: $elm$core$Maybe$Just(''),
 			url: 'http://localhost:7999/sync/todo'
 		});
 };
@@ -7065,6 +7335,14 @@ var $author$project$Todo2$todoDecoderResultsHandler = function (result) {
 		return todoList;
 	}
 };
+var $author$project$Todo2$vectorAdd = F2(
+	function (v1, v2) {
+		return {x: v1.x + v2.x, y: v1.y + v2.y};
+	});
+var $author$project$Todo2$vectorDiff = F2(
+	function (v1, v2) {
+		return {x: v1.x - v2.x, y: v1.y - v2.y};
+	});
 var $author$project$Todo2$update = F2(
 	function (msg, model) {
 		switch (msg.$) {
@@ -7074,7 +7352,7 @@ var $author$project$Todo2$update = F2(
 					_Utils_update(
 						model,
 						{
-							newTodo: {content: newContent, length: model.timeSlotLength, startTime: model.newTodo.startTime}
+							newTodo: {content: newContent, length: model.newTodo.length, startTime: model.newTodo.startTime}
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'NewTodoStartTime':
@@ -7083,7 +7361,16 @@ var $author$project$Todo2$update = F2(
 					_Utils_update(
 						model,
 						{
-							newTodo: {content: model.newTodo.content, length: model.timeSlotLength, startTime: selectedTime}
+							newTodo: {content: model.newTodo.content, length: model.newTodo.length, startTime: selectedTime}
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'NewTodoLength':
+				var newLength = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							newTodo: {content: model.newTodo.content, length: newLength, startTime: model.newTodo.startTime}
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'SubmitNewTodo':
@@ -7107,7 +7394,7 @@ var $author$project$Todo2$update = F2(
 						{
 							newTodo: {
 								content: '',
-								length: model.timeSlotLength,
+								length: model.newTodo.length,
 								startTime: $author$project$Todo2$getNextFreeTime(newModel)
 							}
 						}),
@@ -7143,7 +7430,7 @@ var $author$project$Todo2$update = F2(
 						{
 							newTodo: {
 								content: '',
-								length: model.timeSlotLength,
+								length: model.newTodo.length,
 								startTime: $author$project$Todo2$getNextFreeTime(newModel)
 							}
 						}),
@@ -7178,26 +7465,49 @@ var $author$project$Todo2$update = F2(
 							model.noteArray,
 							$elm$core$Array$fromList(
 								_List_fromArray(
-									[newNote])))
+									[
+										{moving: false, note: newNote}
+									])))
 					});
 				return _Utils_Tuple2(
 					newModel,
-					$author$project$Todo2$postNoteArray(newModel.noteArray));
-			case 'RemoveNote':
-				var note = msg.a;
+					$author$project$Todo2$postNoteArray(
+						A2(
+							$elm$core$Array$map,
+							function (x) {
+								return x.note;
+							},
+							newModel.noteArray)));
+			case 'MoveNote':
+				var newPosition = msg.a;
 				var newModel = _Utils_update(
 					model,
 					{
-						noteArray: A2(
-							$elm$core$Array$filter,
-							function (testNote) {
-								return !_Utils_eq(testNote, note);
-							},
-							model.noteArray)
+						pointer: {
+							position: newPosition,
+							velocity: A2($author$project$Todo2$vectorDiff, newPosition, model.pointer.position)
+						}
 					});
 				return _Utils_Tuple2(
-					newModel,
-					$author$project$Todo2$postNoteArray(newModel.noteArray));
+					_Utils_update(
+						newModel,
+						{
+							noteArray: A2(
+								$elm$core$Array$map,
+								function (x) {
+									return x.moving ? _Utils_update(
+										x,
+										{
+											note: {
+												content: x.note.content,
+												createdTime: x.note.createdTime,
+												position: A2($author$project$Todo2$vectorAdd, x.note.position, newModel.pointer.velocity)
+											}
+										}) : x;
+								},
+								newModel.noteArray)
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'UpdateNoteArray':
 				var newNoteArray = msg.a;
 				var newModel = _Utils_update(
@@ -7205,25 +7515,13 @@ var $author$project$Todo2$update = F2(
 					{noteArray: newNoteArray});
 				return _Utils_Tuple2(
 					newModel,
-					$author$project$Todo2$postNoteArray(newModel.noteArray));
-			case 'GetNewTime':
-				var newTime = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							time: {now: newTime, zone: model.time.zone}
-						}),
-					$elm$core$Platform$Cmd$none);
-			case 'GetTimeZone':
-				var timeZone = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							time: {now: model.time.now, zone: timeZone}
-						}),
-					$elm$core$Platform$Cmd$none);
+					$author$project$Todo2$postNoteArray(
+						A2(
+							$elm$core$Array$map,
+							function (x) {
+								return x.note;
+							},
+							newModel.noteArray)));
 			case 'SyncTodos':
 				var result = msg.a;
 				if (result.$ === 'Ok') {
@@ -7247,7 +7545,7 @@ var $author$project$Todo2$update = F2(
 				} else {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				}
-			default:
+			case 'SyncNotes':
 				var result = msg.a;
 				if (result.$ === 'Ok') {
 					var noteArrayJson = result.a;
@@ -7255,20 +7553,46 @@ var $author$project$Todo2$update = F2(
 						_Utils_update(
 							model,
 							{
-								noteArray: $author$project$Todo2$noteDecoderResultsHandler(
-									A2(
-										$elm$json$Json$Decode$decodeValue,
-										$elm$json$Json$Decode$array($author$project$Todo2$noteDecoder),
-										noteArrayJson))
+								noteArray: A2(
+									$elm$core$Array$map,
+									function (x) {
+										return {moving: false, note: x};
+									},
+									$author$project$Todo2$noteDecoderResultsHandler(
+										A2(
+											$elm$json$Json$Decode$decodeValue,
+											$elm$json$Json$Decode$array($author$project$Todo2$noteDecoder),
+											noteArrayJson)))
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				}
+			case 'GetNewTime':
+				var newTime = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							time: {now: newTime, zone: model.time.zone}
+						}),
+					$elm$core$Platform$Cmd$none);
+			default:
+				var timeZone = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							time: {now: model.time.now, zone: timeZone}
+						}),
+					$elm$core$Platform$Cmd$none);
 		}
 	});
 var $author$project$Todo2$NewTodoContent = function (a) {
 	return {$: 'NewTodoContent', a: a};
+};
+var $author$project$Todo2$NewTodoLength = function (a) {
+	return {$: 'NewTodoLength', a: a};
 };
 var $author$project$Todo2$SpawnNote = function (a) {
 	return {$: 'SpawnNote', a: a};
@@ -7286,45 +7610,23 @@ var $elm$html$Html$Attributes$stringProperty = F2(
 			$elm$json$Json$Encode$string(string));
 	});
 var $elm$html$Html$Attributes$class = $elm$html$Html$Attributes$stringProperty('className');
+var $elm$core$Basics$modBy = _Basics_modBy;
+var $author$project$Todo2$timeLeadingZero = function (input) {
+	return (input < 10) ? ('0' + $elm$core$String$fromInt(input)) : $elm$core$String$fromInt(input);
+};
+var $author$project$Todo2$countdownStringGenerator = function (millisRemaining) {
+	var secondsRemaining = (millisRemaining / 1000) | 0;
+	var second = $author$project$Todo2$timeLeadingZero(
+		A2($elm$core$Basics$modBy, 60, secondsRemaining));
+	var minute = $author$project$Todo2$timeLeadingZero((secondsRemaining / 60) | 0);
+	return minute + (':' + second);
+};
 var $elm$html$Html$div = _VirtualDom_node('div');
 var $elm$html$Html$h1 = _VirtualDom_node('h1');
 var $elm$html$Html$header = _VirtualDom_node('header');
 var $elm$html$Html$hr = _VirtualDom_node('hr');
 var $elm$html$Html$input = _VirtualDom_node('input');
 var $elm$html$Html$main_ = _VirtualDom_node('main');
-var $author$project$Todo2$mousePositionDecoder = A3(
-	$elm$json$Json$Decode$map2,
-	$author$project$Todo2$MousePosition,
-	A2($elm$json$Json$Decode$field, 'x', $elm$json$Json$Decode$int),
-	A2($elm$json$Json$Decode$field, 'y', $elm$json$Json$Decode$int));
-var $elm$core$Elm$JsArray$map = _JsArray_map;
-var $elm$core$Array$map = F2(
-	function (func, _v0) {
-		var len = _v0.a;
-		var startShift = _v0.b;
-		var tree = _v0.c;
-		var tail = _v0.d;
-		var helper = function (node) {
-			if (node.$ === 'SubTree') {
-				var subTree = node.a;
-				return $elm$core$Array$SubTree(
-					A2($elm$core$Elm$JsArray$map, helper, subTree));
-			} else {
-				var values = node.a;
-				return $elm$core$Array$Leaf(
-					A2($elm$core$Elm$JsArray$map, func, values));
-			}
-		};
-		return A4(
-			$elm$core$Array$Array_elm_builtin,
-			len,
-			startShift,
-			A2($elm$core$Elm$JsArray$map, helper, tree),
-			A2($elm$core$Elm$JsArray$map, func, tail));
-	});
-var $author$project$Todo2$RemoveNote = function (a) {
-	return {$: 'RemoveNote', a: a};
-};
 var $author$project$Todo2$UpdateNoteArray = function (a) {
 	return {$: 'UpdateNoteArray', a: a};
 };
@@ -7350,9 +7652,6 @@ var $elm$core$Array$setHelp = F4(
 				tree);
 		}
 	});
-var $elm$core$Array$tailIndex = function (len) {
-	return (len >>> 5) << 5;
-};
 var $elm$core$Array$set = F3(
 	function (index, value, array) {
 		var len = array.a;
@@ -7416,11 +7715,21 @@ var $author$project$Todo2$noteEditor = F3(
 						var n = _v1.b;
 						return _Utils_eq(n, note);
 					},
-					$elm$core$Array$toIndexedList(model.noteArray))));
+					$elm$core$Array$toIndexedList(
+						A2(
+							$elm$core$Array$map,
+							function (x) {
+								return x.note;
+							},
+							model.noteArray)))));
 		var newNote = _Utils_update(
 			note,
 			{content: newContent});
-		var editedNoteArray = A3($elm$core$Array$set, noteIndex, newNote, model.noteArray);
+		var editedNoteArray = A3(
+			$elm$core$Array$set,
+			noteIndex,
+			{moving: false, note: newNote},
+			model.noteArray);
 		return $author$project$Todo2$UpdateNoteArray(editedNoteArray);
 	});
 var $elm$virtual_dom$VirtualDom$Normal = function (a) {
@@ -7438,6 +7747,12 @@ var $elm$html$Html$Events$onClick = function (msg) {
 	return A2(
 		$elm$html$Html$Events$on,
 		'click',
+		$elm$json$Json$Decode$succeed(msg));
+};
+var $elm$html$Html$Events$onDoubleClick = function (msg) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'dblclick',
 		$elm$json$Json$Decode$succeed(msg));
 };
 var $elm$html$Html$Events$alwaysStop = function (x) {
@@ -7471,6 +7786,55 @@ var $elm$html$Html$Events$onInput = function (tagger) {
 			$elm$html$Html$Events$alwaysStop,
 			A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetValue)));
 };
+var $elm$html$Html$Events$onMouseDown = function (msg) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'mousedown',
+		$elm$json$Json$Decode$succeed(msg));
+};
+var $elm$html$Html$Events$onMouseUp = function (msg) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'mouseup',
+		$elm$json$Json$Decode$succeed(msg));
+};
+var $elm$core$Array$filter = F2(
+	function (isGood, array) {
+		return $elm$core$Array$fromList(
+			A3(
+				$elm$core$Array$foldr,
+				F2(
+					function (x, xs) {
+						return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
+					}),
+				_List_Nil,
+				array));
+	});
+var $author$project$Todo2$removeNote = F2(
+	function (note, model) {
+		return A2(
+			$elm$core$Array$filter,
+			function (x) {
+				return !_Utils_eq(x.note, note);
+			},
+			model.noteArray);
+	});
+var $author$project$Todo2$setMovingNote = F3(
+	function (selectedNote, state, model) {
+		return A2(
+			$elm$core$Array$append,
+			$elm$core$Array$fromList(
+				_List_fromArray(
+					[
+						{moving: state, note: selectedNote}
+					])),
+			A2(
+				$elm$core$Array$filter,
+				function (x) {
+					return !_Utils_eq(x.note, selectedNote);
+				},
+				model.noteArray));
+	});
 var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
 var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
 var $elm$virtual_dom$VirtualDom$text = _VirtualDom_text;
@@ -7500,17 +7864,35 @@ var $author$project$Todo2$noteGenerator = F2(
 							_List_Nil,
 							_List_fromArray(
 								[
-									A2($elm$html$Html$div, _List_Nil, _List_Nil),
 									A2(
 									$elm$html$Html$button,
 									_List_fromArray(
 										[
 											$elm$html$Html$Events$onClick(
-											$author$project$Todo2$RemoveNote(note))
+											$author$project$Todo2$UpdateNoteArray(
+												A2($author$project$Todo2$removeNote, note, model)))
 										]),
 									_List_fromArray(
 										[
 											$elm$html$Html$text('x')
+										])),
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											$elm$html$Html$Events$onMouseDown(
+											$author$project$Todo2$UpdateNoteArray(
+												A3($author$project$Todo2$setMovingNote, note, true, model))),
+											$elm$html$Html$Events$onMouseUp(
+											$author$project$Todo2$UpdateNoteArray(
+												A3($author$project$Todo2$setMovingNote, note, false, model))),
+											$elm$html$Html$Events$onDoubleClick(
+											$author$project$Todo2$UpdateNoteArray(
+												A3($author$project$Todo2$setMovingNote, note, true, model)))
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('move')
 										]))
 								])),
 							A2(
@@ -7541,7 +7923,15 @@ var $author$project$Todo2$noteArrayGenerator = function (model) {
 				function (x) {
 					return x(model);
 				},
-				A2($elm$core$Array$map, $author$project$Todo2$noteGenerator, model.noteArray))));
+				A2(
+					$elm$core$Array$map,
+					$author$project$Todo2$noteGenerator,
+					A2(
+						$elm$core$Array$map,
+						function (x) {
+							return x.note;
+						},
+						model.noteArray)))));
 };
 var $elm$html$Html$span = _VirtualDom_node('span');
 var $author$project$Todo2$NewTodoStartTime = function (a) {
@@ -7587,14 +7977,10 @@ var $elm$html$Html$Events$onCheck = function (tagger) {
 		'change',
 		A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetChecked));
 };
-var $author$project$Todo2$timeLeadingZero = function (input) {
-	return (input < 10) ? ('0' + $elm$core$String$fromInt(input)) : $elm$core$String$fromInt(input);
-};
 var $elm$time$Time$flooredDiv = F2(
 	function (numerator, denominator) {
 		return $elm$core$Basics$floor(numerator / denominator);
 	});
-var $elm$core$Basics$modBy = _Basics_modBy;
 var $elm$time$Time$toAdjustedMinutesHelp = F3(
 	function (defaultOffset, posixMinutes, eras) {
 		toAdjustedMinutesHelp:
@@ -7651,15 +8037,15 @@ var $elm$time$Time$toMinute = F2(
 var $author$project$Todo2$timeStringGenerator = F2(
 	function (model, timePosix) {
 		var timeModel = model.time;
-		var roundedTimeMillis = (($elm$time$Time$posixToMillis(timeModel.now) / model.timeSlotLength) | 0) * model.timeSlotLength;
-		if (_Utils_eq(
+		var roundedTimeMillis = (($elm$time$Time$posixToMillis(timeModel.now) / model.newTodo.length) | 0) * model.newTodo.length;
+		if (_Utils_cmp(
 			roundedTimeMillis,
-			$elm$time$Time$posixToMillis(timePosix))) {
+			$elm$time$Time$posixToMillis(timePosix)) > -1) {
 			return 'Now';
 		} else {
-			if (_Utils_eq(
-				roundedTimeMillis + model.timeSlotLength,
-				$elm$time$Time$posixToMillis(timePosix))) {
+			if (_Utils_cmp(
+				roundedTimeMillis + model.newTodo.length,
+				$elm$time$Time$posixToMillis(timePosix)) > -1) {
 				return 'Next';
 			} else {
 				var minute = A2($elm$time$Time$toMinute, timeModel.zone, timePosix);
@@ -7721,6 +8107,37 @@ var $author$project$Todo2$timeSelectorGenerator = function (model) {
 			]),
 		selectableTimesHtml);
 };
+var $elm$core$List$any = F2(
+	function (isOkay, list) {
+		any:
+		while (true) {
+			if (!list.b) {
+				return false;
+			} else {
+				var x = list.a;
+				var xs = list.b;
+				if (isOkay(x)) {
+					return true;
+				} else {
+					var $temp$isOkay = isOkay,
+						$temp$list = xs;
+					isOkay = $temp$isOkay;
+					list = $temp$list;
+					continue any;
+				}
+			}
+		}
+	});
+var $elm$core$List$member = F2(
+	function (x, xs) {
+		return A2(
+			$elm$core$List$any,
+			function (a) {
+				return _Utils_eq(a, x);
+			},
+			xs);
+	});
+var $elm$core$Basics$not = _Basics_not;
 var $elm$html$Html$ol = _VirtualDom_node('ol');
 var $author$project$Todo2$RemoveTodo = function (a) {
 	return {$: 'RemoveTodo', a: a};
@@ -7786,13 +8203,14 @@ var $author$project$Todo2$overdueGenerator = function (todo) {
 					]))
 			]));
 };
-var $author$project$Todo2$countdownStringGenerator = function (millisRemaining) {
-	var secondsRemaining = (millisRemaining / 1000) | 0;
-	var second = $author$project$Todo2$timeLeadingZero(
-		A2($elm$core$Basics$modBy, 60, secondsRemaining));
-	var minute = $author$project$Todo2$timeLeadingZero((secondsRemaining / 60) | 0);
-	return minute + (':' + second);
-};
+var $elm$virtual_dom$VirtualDom$attribute = F2(
+	function (key, value) {
+		return A2(
+			_VirtualDom_attribute,
+			_VirtualDom_noOnOrFormAction(key),
+			_VirtualDom_noJavaScriptOrHtmlUri(value));
+	});
+var $elm$html$Html$Attributes$attribute = $elm$virtual_dom$VirtualDom$attribute;
 var $author$project$Todo2$UpdateTodoList = function (a) {
 	return {$: 'UpdateTodoList', a: a};
 };
@@ -7890,6 +8308,19 @@ var $author$project$Todo2$todoGenerator = function (_v0) {
 								_List_fromArray(
 									[
 										A2(
+										$elm$html$Html$input,
+										_List_fromArray(
+											[
+												A2($elm$html$Html$Attributes$attribute, 'type', 'checkbox')
+											]),
+										_List_Nil)
+									])),
+								A2(
+								$elm$html$Html$td,
+								_List_Nil,
+								_List_fromArray(
+									[
+										A2(
 										$elm$html$Html$button,
 										_List_fromArray(
 											[
@@ -7952,7 +8383,7 @@ var $author$project$Todo2$view = function (model) {
 				A2(
 				$elm$html$Html$Events$on,
 				'click',
-				A2($elm$json$Json$Decode$map, $author$project$Todo2$SpawnNote, $author$project$Todo2$mousePositionDecoder)),
+				A2($elm$json$Json$Decode$map, $author$project$Todo2$SpawnNote, $author$project$Todo2$positionDecoder)),
 				$elm$html$Html$Attributes$class('Whiteboard'),
 				A2($elm$html$Html$Attributes$style, 'position', 'fixed'),
 				A2($elm$html$Html$Attributes$style, 'top', '0'),
@@ -8015,13 +8446,6 @@ var $author$project$Todo2$view = function (model) {
 										_List_fromArray(
 											[
 												A2(
-												$elm$html$Html$span,
-												_List_Nil,
-												_List_fromArray(
-													[
-														$elm$html$Html$text('What to do... ')
-													])),
-												A2(
 												$elm$html$Html$input,
 												_List_fromArray(
 													[
@@ -8056,7 +8480,56 @@ var $author$project$Todo2$view = function (model) {
 														_List_Nil,
 														_List_fromArray(
 															[
-																$elm$html$Html$text('When... ')
+																$elm$html$Html$text('How long ')
+															])),
+														A2(
+														$elm$html$Html$button,
+														_List_fromArray(
+															[
+																$elm$html$Html$Events$onClick(
+																$author$project$Todo2$NewTodoLength(model.newTodo.length - ((15 * 60) * 1000)))
+															]),
+														_List_fromArray(
+															[
+																$elm$html$Html$text('-')
+															])),
+														A2(
+														$elm$html$Html$span,
+														_List_Nil,
+														_List_fromArray(
+															[
+																$elm$html$Html$text(
+																$author$project$Todo2$countdownStringGenerator(model.newTodo.length))
+															])),
+														A2(
+														$elm$html$Html$button,
+														_List_fromArray(
+															[
+																$elm$html$Html$Events$onClick(
+																$author$project$Todo2$NewTodoLength(model.newTodo.length + ((15 * 60) * 1000)))
+															]),
+														_List_fromArray(
+															[
+																$elm$html$Html$text('+')
+															]))
+													]))
+											])),
+										A2(
+										$elm$html$Html$div,
+										_List_Nil,
+										_List_fromArray(
+											[
+												A2(
+												$elm$html$Html$span,
+												_List_Nil,
+												_List_fromArray(
+													[
+														A2(
+														$elm$html$Html$span,
+														_List_Nil,
+														_List_fromArray(
+															[
+																$elm$html$Html$text('When ')
 															])),
 														A2(
 														$elm$html$Html$span,
@@ -8084,7 +8557,7 @@ var $author$project$Todo2$view = function (model) {
 						$author$project$Todo2$noteArrayGenerator(model)
 					]))
 			]),
-		title: 'Todo2'
+		title: 'Todo2 '
 	};
 };
 var $author$project$Todo2$main = $elm$browser$Browser$document(
