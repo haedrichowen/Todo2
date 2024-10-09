@@ -465,7 +465,7 @@ getSelectableTimes model =
             List.map (\todo -> { startTime = todo.startTime, endTime = todo.startTime + todo.length }) model.todoList
 
         timeGaps =
-            List.filter (\x -> x.startTime < x.endTime)
+            List.filter (\x -> (x.startTime < x.endTime) && (x.startTime > roundedTime))
                 (List.indexedMap
                     (\i timeBlock ->
                         { startTime = timeBlock.endTime
