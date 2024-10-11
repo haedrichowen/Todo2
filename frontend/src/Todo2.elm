@@ -377,12 +377,11 @@ update msg model =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
-    Sub.batch [
-    Time.every 1000 GetNewTime,
-    Browser.Events.onMouseMove (Decoder.map MoveNote positionDecoder)]
-
--- VIEW
+subscriptions model =
+    Sub.batch [ Time.every 1000 GetNewTime, Browser.Events.onMouseMove (Decoder.map MoveNote positionDecoder) ]
+    
+    
+    -- VIEW
 
 
 timeLeadingZero : Int -> String
@@ -405,10 +404,6 @@ timeStringGenerator model timePosix =
     in
     if roundedTimeMillis >= Time.posixToMillis timePosix then
         "Now"
-
-    else if roundedTimeMillis + model.newTodo.length >= Time.posixToMillis timePosix then
-        "Next"
-
     else
         let
             hour =
@@ -442,6 +437,17 @@ countdownStringGenerator millisRemaining =
     minute ++ ":" ++ second
 
 
+
+lengthSelectionGenerator : Model -> Html Msg
+lengthSelectionGenerator model =
+    let
+        selectableLengths = List.map (\x -> x*model.newTodo.length) (List.range 1 9)
+        
+        selectableLengthsHtml =
+            List.map (\length -> div [] [ input [name "lengthSelector", type_ "radio", onCheck (\check -> NewTodoLength length) ] [], span [] [ text (countdownStringGenerator length) ] ]) selectableLengths
+    in
+    span [ style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableLengthsHtml
+
 timeSelectionGenerator : Model -> Html Msg
 timeSelectionGenerator model =
     let
@@ -450,7 +456,7 @@ timeSelectionGenerator model =
     in
     let
         selectableTimesHtml =
-            List.map (\( newEndTime, selected ) -> span [] [ input [ checked selected, name "TimeSelector", type_ "radio", onCheck (\check -> NewTodoStartTime newEndTime) ] [], span [] [ text (timeStringGenerator model (Time.millisToPosix newEndTime)) ] ]) (applySelectedTime selectableTimes model)
+            List.map (\newEndTime -> div [] [ input [ name "timeSelector", type_ "radio", onCheck (\check -> NewTodoStartTime newEndTime) ] [], span [] [ text (timeStringGenerator model (Time.millisToPosix newEndTime)) ] ]) selectableTimes
     in
     span [ style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableTimesHtml
 
@@ -494,19 +500,6 @@ getSelectableTimes model =
             selectableGaps ++ remainingTimes
     in
     selectableTimes
-
-
-applySelectedTime : List Int -> Model -> List ( Int, Bool )
-applySelectedTime selectableTimes model =
-    let
-        userSelectedTime =
-            model.newTodo.startTime
-    in
-    if userSelectedTime == 0 then
-        List.indexedMap (\i t -> ( t, i == 0 )) selectableTimes
-
-    else
-        List.map (\t -> ( t, userSelectedTime == t )) selectableTimes
 
 
 getNextFreeTime : Model -> Int
@@ -673,18 +666,14 @@ view model =
                     [ div []
                         [ span [] [ text "do " ]
                         , input [ value model.newTodo.content, onInput NewTodoContent ] []
-                        ,span []
-                            [ span [] [ text "for " ]
-                            , button [ onClick <| NewTodoLength (model.newTodo.length - 15 * 60 * 1000) ] [ text "-" ]
-                            , span [] [ text <| countdownStringGenerator model.newTodo.length ]
-                            , button [ onClick <| NewTodoLength (model.newTodo.length + 15 * 60 * 1000) ] [ text "+" ]
-                            ]
-                        ,span [ class "timeSelection" ]
+                        , span [] [ span [] [ text "for " ], span [ style "display" "inline-block" ] [ lengthSelectionGenerator model ] ]
+                        , span [ class "timeSelection" ]
                             [ span [] [ text "at " ]
-                            , span [ style "display" "inline-block"] [ timeSelectionGenerator model ]
+                            , span [ style "display" "inline-block" ] [ timeSelectionGenerator model ]
                             ]
-                        ]
-                    , button [ onClick (SubmitNewTodo newTodo) ] [ text "+" ]
+                        , button [ onClick (SubmitNewTodo newTodo) ] [ text "+" ]
+                    
+                    ]
                     , hr [] []
                     ]
                 , div []
