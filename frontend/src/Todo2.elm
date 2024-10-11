@@ -442,8 +442,8 @@ countdownStringGenerator millisRemaining =
     minute ++ ":" ++ second
 
 
-timeSelectorGenerator : Model -> Html Msg
-timeSelectorGenerator model =
+timeSelectionGenerator : Model -> Html Msg
+timeSelectionGenerator model =
     let
         selectableTimes =
             getSelectableTimes model
@@ -540,7 +540,7 @@ todoGenerator ( todo, model ) =
             else
                 div [] [ text ("Do by: " ++ timeStringGenerator model (Time.millisToPosix todoEndTime)) ]
     in
-    li []
+    li [class "todo"]
         [ table []
             [ tr []
                 [ td []
@@ -584,7 +584,7 @@ noteEditor note model newContent =
 
 overdueGenerator : Todo -> Html Msg
 overdueGenerator todo =
-    li []
+    li [class "todo", class "overdue"]
         [ table []
             [ tr []
                 [ td []
@@ -625,7 +625,7 @@ noteGenerator note model =
         , style "left" x
         , style "top" y
         ]
-        [ div []
+        [ div [class "note"]
             [ div []
                 [ button [ onClick (UpdateNoteArray (removeNote note model)) ] [ text "x" ]
                 , button
@@ -657,7 +657,7 @@ view : Model -> Browser.Document Msg
 view model =
     let
         whiteboard =
-            span [ on "click" (Decoder.map SpawnNote positionDecoder), class "Whiteboard", style "position" "fixed", style "top" "0", style "width" "100vw", style "height" "100vh", style "z-index" "1" ] []
+            span [ on "click" (Decoder.map SpawnNote positionDecoder), class "whiteboard", style "position" "fixed", style "top" "0", style "width" "100vw", style "height" "100vh", style "z-index" "1" ] []
 
         newTodo =
             cleanNewTodo model.newTodo model
@@ -666,28 +666,25 @@ view model =
     , body =
         [ div [ style "display" "flex", style "justify-content" "center", style "width" "100vw", style "height" "100vh" ]
             [ whiteboard
-            , article [ class "TodoList", style "z-index" "3", style "position" "fixed" ]
+            , article [ class "todoList", style "z-index" "3", style "position" "fixed" ]
                 [ header []
                     [ h1 [] [ text ("Todo : " ++ timeStringGenerator model (Time.millisToPosix newTodo.startTime))] ]
                 , main_ []
                     [ div []
-                        [ input [ value model.newTodo.content, onInput NewTodoContent ] []
-                        , button [ onClick (SubmitNewTodo newTodo) ] [ text "+" ]
-                        ]
-                    , div []
-                        [ span []
-                            [ span [] [ text "How long " ]
+                        [ span [] [ text "do " ]
+                        , input [ value model.newTodo.content, onInput NewTodoContent ] []
+                        ,span []
+                            [ span [] [ text "for " ]
                             , button [ onClick <| NewTodoLength (model.newTodo.length - 15 * 60 * 1000) ] [ text "-" ]
                             , span [] [ text <| countdownStringGenerator model.newTodo.length ]
                             , button [ onClick <| NewTodoLength (model.newTodo.length + 15 * 60 * 1000) ] [ text "+" ]
                             ]
-                        ]
-                    , div []
-                        [ span []
-                            [ span [] [ text "When " ]
-                            , span [ style "display" "inline-block", style "width" "70%" ] [ timeSelectorGenerator model ]
+                        ,span [ class "timeSelection" ]
+                            [ span [] [ text "at " ]
+                            , span [ style "display" "inline-block"] [ timeSelectionGenerator model ]
                             ]
                         ]
+                    , button [ onClick (SubmitNewTodo newTodo) ] [ text "+" ]
                     , hr [] []
                     ]
                 , div []
