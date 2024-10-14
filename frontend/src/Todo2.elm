@@ -14,6 +14,7 @@ import Platform.Cmd as Cmd
 import String
 import Task
 import Time
+import Browser.Dom exposing (setViewportOf)
 
 -- MAIN
 
@@ -125,6 +126,7 @@ type Msg
     | SyncNotes (Result Http.Error Decoder.Value)
     | GetNewTime Time.Posix
     | GetTimeZone Time.Zone
+    | ModifyDOM (Result Browser.Dom.Error ())
 
 encodeTodoList : List Todo -> Encoder.Value
 encodeTodoList todoList =
@@ -188,6 +190,9 @@ positionDecoder =
         (Decoder.field "clientX" Decoder.int)
         (Decoder.field "clientY" Decoder.int)
 
+resetScrollPosition : String -> Cmd Msg
+resetScrollPosition id = 
+    Task.attempt ModifyDOM (setViewportOf id 0 0)
 
 postTodoList : List Todo -> Cmd Msg
 postTodoList todoList =
@@ -279,7 +284,7 @@ update msg model =
 
         NewTodoLength newLength ->
             ( { model | newTodo = { content = model.newTodo.content, startTime = model.newTodo.startTime, length = newLength } }
-            , Cmd.none
+            , resetScrollPosition "timeSelection" 
             )
 
         SubmitNewTodo newTodo ->
@@ -298,12 +303,7 @@ update msg model =
                 newTodoList =
                     List.filter (\x -> x /= todo) model.todoList
 
-                newModel =
-                    if List.isEmpty newTodoList then
-                        { model | todoList = [ { defaultTodo | startTime = getNextFreeTime { model | todoList = newTodoList } } ] }
-
-                    else
-                        { model | todoList = newTodoList }
+                newModel = { model | todoList = newTodoList }
             in
             ( { newModel | newTodo = { content = "", startTime = getNextFreeTime newModel, length = model.newTodo.length } }, postTodoList newModel.todoList )
 
@@ -373,6 +373,8 @@ update msg model =
             , Cmd.none
             )
 
+        ModifyDOM _ -> (model, Cmd.none)
+
 -- SUBSCRIPTIONS
 
 
@@ -441,12 +443,12 @@ countdownStringGenerator millisRemaining =
 lengthSelectionGenerator : Model -> Html Msg
 lengthSelectionGenerator model =
     let
-        selectableLengths = List.map (\x -> x*model.newTodo.length) (List.range 1 9)
+        selectableLengths = List.map (\x -> x*defaultTodo.length) (List.range 1 9)
         
         selectableLengthsHtml =
-            List.map (\length -> div [] [ input [name "lengthSelector", type_ "radio", onCheck (\check -> NewTodoLength length) ] [], span [] [ text (countdownStringGenerator length) ] ]) selectableLengths
+            List.map (\newLength -> div [onMouseOver (NewTodoLength newLength) ] [div [] [ input [ checked (model.newTodo.length == newLength), name "lengthSelector", type_ "radio"] [], text (countdownStringGenerator newLength) ]]) selectableLengths
     in
-    span [ style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableLengthsHtml
+    span [ id "lengthSelection", style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableLengthsHtml
 
 timeSelectionGenerator : Model -> Html Msg
 timeSelectionGenerator model =
@@ -456,9 +458,9 @@ timeSelectionGenerator model =
     in
     let
         selectableTimesHtml =
-            List.map (\newEndTime -> div [] [ input [ name "timeSelector", type_ "radio", onCheck (\check -> NewTodoStartTime newEndTime) ] [], span [] [ text (timeStringGenerator model (Time.millisToPosix newEndTime)) ] ]) selectableTimes
+            List.map (\newStartTime -> div [ onMouseOver (NewTodoStartTime newStartTime) ] [ input [ checked (model.newTodo.startTime == newStartTime), name "timeSelector", type_ "radio"] [], text (timeStringGenerator model (Time.millisToPosix newStartTime)) ]) selectableTimes
     in
-    span [ style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableTimesHtml
+    span [ id "timeSelection", style "display" "inline-block", style "width" "100%", style "height" "1.3em", style "white-space" "nowrap", style "overflow" "scroll", style "scrollbar-width" "none" ] selectableTimesHtml
 
 
 getSelectableTimes : Model -> List Int
@@ -591,17 +593,20 @@ overdueGenerator todo =
 
 todoListGenerator : Model -> Html Msg
 todoListGenerator model =
-    let
-        overDueList =
-            List.filter (\overdueTodo -> (overdueTodo.startTime + overdueTodo.length) < Time.posixToMillis model.time.now) model.todoList
+    if List.length model.todoList == 0 then 
+        div [] [text "All done!"]
+    else
+        let
+            overDueList =
+                List.filter (\overdueTodo -> (overdueTodo.startTime + overdueTodo.length) < Time.posixToMillis model.time.now) model.todoList
 
-        futureList =
-            List.filter (\overdueTodo -> not <| List.member overdueTodo overDueList) model.todoList
-    in
-    div []
-        [ ol [] (List.map overdueGenerator overDueList)
-        , ol [] (List.map todoGenerator (List.map (\todo -> ( todo, model )) futureList))
-        ]
+            futureList =
+                List.filter (\overdueTodo -> not <| List.member overdueTodo overDueList) model.todoList
+        in
+        div []
+            [ ol [] (List.map overdueGenerator overDueList)
+            , ol [] (List.map todoGenerator (List.map (\todo -> ( todo, model )) futureList))
+            ]
 
 
 noteGenerator : Note -> Model -> Html Msg
@@ -667,7 +672,7 @@ view model =
                         [ span [] [ text "do " ]
                         , input [ value model.newTodo.content, onInput NewTodoContent ] []
                         , span [] [ span [] [ text "for " ], span [ style "display" "inline-block" ] [ lengthSelectionGenerator model ] ]
-                        , span [ class "timeSelection" ]
+                        , span []
                             [ span [] [ text "at " ]
                             , span [ style "display" "inline-block" ] [ timeSelectionGenerator model ]
                             ]
