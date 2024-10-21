@@ -283,7 +283,7 @@ update msg model =
             )
 
         NewTodoLength newLength ->
-            ( { model | newTodo = { content = model.newTodo.content, startTime = model.newTodo.startTime, length = newLength } }
+            ( { model | newTodo = { content = model.newTodo.content, startTime = getNextFreeTime model, length = newLength } }
             , resetScrollPosition "timeSelection" 
             )
 
