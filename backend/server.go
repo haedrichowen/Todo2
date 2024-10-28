@@ -42,6 +42,7 @@ func init() {
 	todoURL, _ = reader.ReadString('\n')
 	initializeTodoList()
 	initlializeNotesList()
+	fmt.Print("Service Started")
 }
 
 func initializeTodoList() {
